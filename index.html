@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#315eea">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="2026 GOALS">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./icons/icon-192.png">
+<title>2026 GOALS</title>
+<style>
+:root{
+  --bg:#f4f6fb;--panel:#fff;--ink:#172039;--muted:#77819a;--line:#e6e9f1;
+  --blue:#315eea;--blue2:#5c7df2;--soft:#edf2ff;--green:#16855f;--red:#c84c55;
+  --amber:#b87417;--shadow:0 10px 30px rgba(30,48,95,.08);--navh:82px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;min-height:100%;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic UI","Noto Sans JP",sans-serif}
+body{padding:env(safe-area-inset-top) 0 calc(var(--navh) + env(safe-area-inset-bottom))}
+button,input,select,textarea{font:inherit}button{cursor:pointer}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid rgba(49,94,234,.2);outline-offset:2px}
+.app{max-width:600px;margin:0 auto;min-height:100vh;padding:0 14px 24px}
+.topbar{position:sticky;top:0;z-index:20;margin:0 -14px;padding:12px 14px 10px;background:rgba(244,246,251,.92);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);display:flex;align-items:center;justify-content:space-between}
+.brand{display:flex;align-items:center;gap:10px}.brand-mark{width:40px;height:40px;border-radius:14px;background:linear-gradient(145deg,#315eea,#755ce9);display:grid;place-items:center;color:#fff;font-weight:900;box-shadow:0 8px 20px rgba(49,94,234,.22)}
+.brand h1{font-size:18px;margin:0;letter-spacing:.02em}.brand small{display:block;color:var(--muted);font-size:11px;margin-top:1px}
+.icon-btn{width:42px;height:42px;border:0;border-radius:14px;background:#fff;box-shadow:var(--shadow);color:#536078;font-size:20px}
+.view{display:none}.view.active{display:block}
+.hero{background:linear-gradient(145deg,#315eea,#5678ef 57%,#7c61e8);color:white;border-radius:26px;padding:22px 20px;margin:6px 0 14px;box-shadow:0 15px 35px rgba(49,94,234,.22);position:relative;overflow:hidden}.hero:after{content:"";position:absolute;width:180px;height:180px;border-radius:50%;right:-65px;top:-90px;background:rgba(255,255,255,.1)}
+.hero .date{font-size:13px;opacity:.88}.hero h2{font-size:29px;margin:7px 0 4px}.hero p{font-size:13px;margin:0;opacity:.9}.hero-stat{display:flex;gap:8px;margin-top:16px}.hero-pill{background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.18);padding:8px 10px;border-radius:13px;font-size:12px}
+.section-head{display:flex;justify-content:space-between;align-items:end;gap:10px;margin:18px 3px 9px}.section-head h2{margin:0;font-size:19px}.section-head p{margin:3px 0 0;color:var(--muted);font-size:12px}.link-btn{border:0;background:none;color:var(--blue);font-weight:700;font-size:13px;padding:4px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:21px;padding:16px;box-shadow:0 7px 24px rgba(31,47,88,.05)}
+.daily-list{display:grid;gap:10px}.daily-row{display:grid;grid-template-columns:52px 1fr auto;gap:12px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:19px;padding:11px 12px;min-height:72px;box-shadow:0 5px 18px rgba(31,47,88,.04)}
+.emoji{width:48px;height:48px;border-radius:15px;background:var(--soft);display:grid;place-items:center;font-size:24px}.daily-row b{font-size:15px}.daily-row small{display:block;color:var(--muted);font-size:11px;margin-top:3px}.state-toggle{border:0;min-width:58px;height:46px;border-radius:15px;font-weight:800;font-size:14px;background:#f0f2f7;color:#9aa2b3}.state-toggle.yes{background:#e6f7ef;color:var(--green)}.state-toggle.no{background:#fff0f0;color:var(--red)}
+.primary{width:100%;border:0;border-radius:17px;padding:15px 16px;background:var(--ink);color:#fff;font-weight:800;margin-top:11px;box-shadow:0 8px 20px rgba(23,32,57,.14)}.primary.blue{background:var(--blue)}.primary:active,.action-chip:active,.fab:active{transform:scale(.985)}
+.micro-note{text-align:center;color:var(--muted);font-size:11px;margin:8px 0 0}
+.week-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.week-card{background:#fff;border:1px solid var(--line);border-radius:17px;padding:12px;min-width:0}.week-card small{color:var(--muted);font-size:10px}.week-card .big{font-weight:900;font-size:22px;margin:5px 0}.bar{height:7px;border-radius:999px;background:#edf0f5;overflow:hidden}.bar i{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#315eea,#785be8)}
+.quick-progress{display:grid;grid-template-columns:1fr 1fr;gap:9px}.progress-card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:13px;min-width:0}.progress-top{display:flex;justify-content:space-between;align-items:center;gap:6px}.progress-top b{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.progress-icon{font-size:17px}.progress-val{font-size:20px;font-weight:900;margin:8px 0 3px}.progress-card small{color:var(--muted);font-size:10px}
+.empty{padding:24px 12px;text-align:center;color:var(--muted);font-size:13px}.event-list{display:grid;gap:8px}.event-row{display:flex;align-items:center;gap:11px;padding:11px;border:1px solid var(--line);border-radius:16px;background:#fff}.event-row .ei{width:38px;height:38px;border-radius:12px;background:#f1f4fb;display:grid;place-items:center;font-size:19px;flex:0 0 auto}.event-row .main{min-width:0;flex:1}.event-row b{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.event-row small{color:var(--muted);font-size:10px}.mini-btn{border:0;background:#f2f4f8;color:#68738a;border-radius:10px;padding:7px 9px;font-size:11px}
+.calendar-card{padding:12px}.cal-head{display:flex;align-items:center;justify-content:space-between;padding:4px 2px 12px}.cal-head h2{font-size:18px;margin:0}.cal-nav{border:0;background:#eef2f8;width:38px;height:38px;border-radius:12px;color:#536078;font-size:20px}.weekdays,.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}.weekdays div{text-align:center;font-size:10px;color:#98a0af;padding:4px 0 7px}.day{aspect-ratio:.82;border:0;background:transparent;border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding:6px 2px 3px;position:relative;color:var(--ink)}.day.other{opacity:.25}.day.today{background:var(--soft);color:var(--blue);font-weight:900}.day.selected{box-shadow:inset 0 0 0 2px var(--blue)}.day.future{opacity:.42}.day-num{font-size:12px;line-height:1}.dots{margin-top:5px;display:flex;gap:2px;justify-content:center;min-height:6px;flex-wrap:wrap;width:100%}.dot{width:5px;height:5px;border-radius:50%;background:#d6dbe6}.dot.on{background:var(--green)}.dot.off{background:var(--red)}.dot.event{background:var(--blue);width:7px}.touchmark{font-size:8px;color:var(--muted);margin-top:2px}
+.month-selector{display:flex;align-items:center;justify-content:space-between;gap:8px}.month-selector select{flex:1;border:1px solid var(--line);background:#fff;padding:11px;border-radius:13px;color:var(--ink);font-weight:700}
+.goal-list{display:grid;gap:9px}.goal-card{border:1px solid var(--line);background:#fff;border-radius:19px;padding:14px;text-align:left;width:100%;color:var(--ink)}.goal-head{display:flex;align-items:flex-start;gap:10px}.goal-num{width:32px;height:32px;border-radius:11px;background:var(--soft);display:grid;place-items:center;color:var(--blue);font-size:11px;font-weight:900;flex:0 0 auto}.goal-title{font-size:14px;font-weight:800}.goal-detail{font-size:10px;color:var(--muted);margin-top:3px}.goal-right{margin-left:auto;text-align:right;flex:0 0 auto}.goal-value{font-size:14px;font-weight:900}.goal-pct{font-size:10px;color:var(--muted);margin-top:2px}.goal-bar{height:6px;border-radius:999px;background:#edf0f5;overflow:hidden;margin-top:11px}.goal-bar i{display:block;height:100%;background:linear-gradient(90deg,#315eea,#795ce8);border-radius:inherit}.goal-bar i.done{background:#2c9d72}
+.month-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}.summary-box{background:#fff;border:1px solid var(--line);border-radius:16px;padding:11px;text-align:center}.summary-box .v{font-size:20px;font-weight:900}.summary-box small{color:var(--muted);font-size:9px}
+.month-habits{display:grid;gap:8px;margin-top:10px}.month-habit{background:#fff;border:1px solid var(--line);border-radius:16px;padding:12px}.month-habit-top{display:flex;justify-content:space-between;align-items:center}.month-habit b{font-size:12px}.month-habit strong{font-size:18px}.month-habit small{color:var(--muted);font-size:9px}.month-events{display:grid;grid-template-columns:1fr 1fr;gap:7px}.month-event{background:#fff;border:1px solid var(--line);border-radius:15px;padding:10px}.month-event b{font-size:11px}.month-event .n{font-size:18px;font-weight:900;margin-top:4px}.month-event small{font-size:9px;color:var(--muted)}
+.field{margin:0 0 12px}.field label{display:block;font-size:11px;color:var(--muted);margin-bottom:6px}.field input,.field select,.field textarea{width:100%;border:1px solid #dfe3ec;border-radius:14px;background:#fff;padding:12px;color:var(--ink)}.field textarea{min-height:92px;resize:vertical}.two{display:grid;grid-template-columns:1fr 1fr;gap:9px}.check-row{display:flex;align-items:center;gap:9px;border:1px solid var(--line);border-radius:14px;padding:11px}.check-row input{width:20px;height:20px}.actions{display:flex;gap:8px}.actions button{flex:1;border:0;border-radius:14px;padding:12px;font-weight:800}.secondary{background:#eef1f6;color:#4e5b72}.danger{background:#fff0f1;color:#bd4450}.action-chip{border:1px solid var(--line);background:#fff;border-radius:18px;padding:13px 10px;text-align:center;color:var(--ink);font-size:12px;font-weight:700;box-shadow:0 5px 18px rgba(31,47,88,.04)}.action-chip span{display:block;font-size:24px;margin-bottom:5px}.action-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.bottom-nav{position:fixed;z-index:40;left:50%;transform:translateX(-50%);bottom:0;width:min(600px,100%);height:calc(var(--navh) + env(safe-area-inset-bottom));padding:8px 10px calc(8px + env(safe-area-inset-bottom));background:rgba(255,255,255,.94);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border-top:1px solid rgba(220,224,235,.85);display:grid;grid-template-columns:repeat(5,1fr);align-items:start}.nav-btn{border:0;background:transparent;color:#8992a5;font-size:9px;font-weight:700;padding:2px 1px}.nav-btn span{display:block;font-size:21px;line-height:28px}.nav-btn.active{color:var(--blue)}.nav-btn.add span{width:48px;height:48px;margin:-13px auto 0;border-radius:17px;background:var(--blue);color:#fff;display:grid;place-items:center;font-size:28px;box-shadow:0 9px 22px rgba(49,94,234,.28)}.nav-btn.add{color:var(--blue)}
+.sheet-backdrop{position:fixed;inset:0;background:rgba(17,25,45,.34);z-index:80;opacity:0;pointer-events:none;transition:.18s}.sheet-backdrop.open{opacity:1;pointer-events:auto}.sheet{position:absolute;left:50%;bottom:0;transform:translate(-50%,105%);width:min(600px,100%);max-height:88vh;background:#f7f8fc;border-radius:27px 27px 0 0;padding:10px 14px calc(20px + env(safe-area-inset-bottom));overflow:auto;transition:.22s ease}.sheet-backdrop.open .sheet{transform:translate(-50%,0)}.grab{width:42px;height:5px;background:#d7dbe4;border-radius:999px;margin:1px auto 12px}.sheet-title{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:2px 2px 12px}.sheet-title h2{font-size:19px;margin:0}.sheet-close{border:0;background:#e9ecf2;width:36px;height:36px;border-radius:12px;color:#657087}.sheet .card{box-shadow:none;margin-bottom:10px}.sheet .section-head{margin-top:12px}
+.toast{position:fixed;z-index:120;left:50%;bottom:calc(var(--navh) + 20px + env(safe-area-inset-bottom));transform:translate(-50%,15px);background:#172039;color:#fff;padding:10px 14px;border-radius:13px;font-size:12px;opacity:0;transition:.18s;pointer-events:none}.toast.show{opacity:1;transform:translate(-50%,0)}
+.story-wrap{background:#dde3ef;border-radius:20px;padding:8px;margin-top:10px}.story-wrap canvas{width:100%;height:auto;border-radius:16px;display:block;background:#456}.small-text{font-size:11px;line-height:1.6;color:var(--muted)}.badge{display:inline-block;padding:5px 8px;border-radius:999px;font-size:10px;font-weight:800;background:#eef2f7;color:#657087}.badge.good{background:#e7f6ef;color:var(--green)}
+.install-note{background:#eef3ff;border:1px solid #dbe4ff;color:#3e5cad;border-radius:16px;padding:12px;font-size:11px;line-height:1.6}
+@media(min-width:560px){.day{aspect-ratio:1}.action-grid{grid-template-columns:repeat(4,1fr)}}
+
+.backup-notice{margin:10px 0 0;border-radius:17px;padding:12px 13px;border:1px solid #f0dfb6;background:#fff8e8;color:#795516;font-size:11px;line-height:1.55;display:flex;align-items:center;gap:10px}.backup-notice.urgent{background:#fff0f1;border-color:#f0c7cc;color:#a33a46}.backup-notice b{display:block;font-size:12px}.backup-notice button{margin-left:auto;flex:0 0 auto;border:0;border-radius:12px;padding:9px 10px;background:#fff;color:inherit;font-weight:800}.setup-overlay{position:fixed;inset:0;z-index:200;background:linear-gradient(145deg,#edf2ff,#f7f8fc 55%,#f3efff);display:none;align-items:center;justify-content:center;padding:24px}.setup-overlay.open{display:flex}.setup-card{width:min(430px,100%);background:#fff;border:1px solid var(--line);border-radius:28px;padding:24px;box-shadow:0 24px 60px rgba(31,47,88,.15);text-align:center}.setup-card h2{margin:12px 0 8px;font-size:28px}.setup-card p{color:var(--muted);font-size:12px;line-height:1.7;margin:0 0 18px}.setup-card .primary{margin-top:9px}.setup-mark{width:66px;height:66px;border-radius:22px;background:linear-gradient(145deg,#315eea,#755ce9);display:grid;place-items:center;margin:auto;color:white;font-size:22px;font-weight:900;box-shadow:0 12px 28px rgba(49,94,234,.22)}.update-banner{position:fixed;left:12px;right:12px;top:calc(env(safe-area-inset-top) + 10px);z-index:180;max-width:620px;margin:auto;background:#172039;color:#fff;border-radius:18px;padding:12px;box-shadow:0 14px 40px rgba(15,23,45,.28);display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center}.update-banner[hidden]{display:none}.update-banner div{grid-column:1/-1}.update-banner b{display:block;font-size:13px}.update-banner small{display:block;color:#c8d0df;font-size:10px;margin-top:2px}.update-banner button{border:0;border-radius:12px;padding:10px 11px;font-size:11px;font-weight:800;background:#2a344c;color:#fff}.update-banner .update-primary{background:#5d7df0}.backup-meta{display:grid;gap:6px;margin-bottom:10px}.backup-meta b{font-size:13px}.backup-meta small{font-size:10px;color:var(--muted)}.status-good{color:var(--green)}.status-warn{color:var(--amber)}.status-danger{color:var(--red)}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand"><div class="brand-mark">26</div><div><h1>2026 GOALS</h1><small id="headerSub">今日をちょっと進める</small></div></div>
+    <button class="icon-btn" id="settingsBtn" aria-label="設定">⚙︎</button>
+  </header>
+
+  <main>
+    <section id="todayView" class="view active">
+      <div class="hero">
+        <div class="date" id="todayDateLabel"></div>
+        <h2 id="todayGreeting">TODAY</h2>
+        <p>毎日系だけチェック。イベントが何もない日も、そのまま記録できます。</p>
+        <div class="hero-stat"><div class="hero-pill" id="yearDays"></div><div class="hero-pill" id="todayDone"></div></div>
+      </div>
+      <div id="todayBackupNotice"></div>
+
+      <div class="section-head"><div><h2>今日のチェック</h2><p>タップで「未記録 → ○ → ×」。あとから変更OK。</p></div></div>
+      <div id="todayDaily" class="daily-list"></div>
+      <button class="primary blue" id="touchTodayBtn">今日の記録を保存</button>
+      <p class="micro-note">未チェックは未記録のまま保存されます</p>
+
+      <div class="section-head"><div><h2>今週あとどれくらい？</h2><p>週4を目安に、自動集計。</p></div></div>
+      <div id="weekProgress" class="week-grid"></div>
+
+      <div class="section-head"><div><h2>2026 PROGRESS</h2><p>イベント記録から勝手に増える項目。</p></div><button class="link-btn" data-go="goals">全部見る</button></div>
+      <div id="quickProgress" class="quick-progress"></div>
+
+      <div class="section-head"><div><h2>今日のイベント</h2><p>映画、ゲーム、友達、脱出など。</p></div><button class="link-btn" id="todayAddBtn">＋ 追加</button></div>
+      <div id="todayEvents" class="event-list"></div>
+    </section>
+
+    <section id="calendarView" class="view">
+      <div class="section-head"><div><h2>CALENDAR</h2><p>日付を選んで、過去の記録を追記・修正。</p></div></div>
+      <div class="card calendar-card">
+        <div class="cal-head"><button class="cal-nav" id="prevMonth">‹</button><h2 id="calTitle"></h2><button class="cal-nav" id="nextMonth">›</button></div>
+        <div class="weekdays"><div>日</div><div>月</div><div>火</div><div>水</div><div>木</div><div>金</div><div>土</div></div>
+        <div id="calendarGrid" class="cal-grid"></div>
+      </div>
+      <div class="install-note" style="margin-top:12px">日付の下の小さい点は、左から 💪 / 👀 / 🛏 の記録。青い点はイベントありです。</div>
+    </section>
+
+    <section id="goalsView" class="view">
+      <div class="section-head"><div><h2 id="goalsHeading">GOALS</h2><p>日々のログから現在値を自動計算。</p></div></div>
+      <div id="goalsList" class="goal-list"></div>
+    </section>
+
+    <section id="monthlyView" class="view">
+      <div class="section-head"><div><h2>MONTHLY</h2><p>月次集計、振り返り、Instagram出力。</p></div></div>
+      <div class="card">
+        <div class="month-selector"><button class="cal-nav" id="prevSummaryMonth">‹</button><select id="summaryMonth"></select><button class="cal-nav" id="nextSummaryMonth">›</button></div>
+      </div>
+      <div id="monthlyBackupNotice"></div>
+      <div class="section-head"><div><h2>習慣</h2><p>基準集計がある月はそれを使い、それ以降は日次ログから自動集計。</p></div></div>
+      <div id="monthlyHabits" class="month-habits"></div>
+      <div class="section-head"><div><h2>今月の追加</h2><p>イベントログをカテゴリ別に集計。</p></div></div>
+      <div id="monthlyEvents" class="month-events"></div>
+      <div class="section-head"><div><h2>月次メモ</h2><p>自分の言葉を1つだけ足す。</p></div></div>
+      <div class="card">
+        <div class="field"><textarea id="monthMemo" placeholder="例：ボドゲは好調。筋トレは来月戻す。"></textarea></div>
+        <button class="primary" id="saveMemoBtn">メモを保存</button>
+      </div>
+      <div class="section-head"><div><h2>OUTPUT</h2><p>テキストとStory画像を自動生成。</p></div></div>
+      <div class="card">
+        <div class="actions"><button class="secondary" id="copyMonthlyBtn">月次テキストをコピー</button><button class="secondary" id="refreshStoryBtn">Story更新</button></div>
+        <div class="field" style="margin-top:12px"><label>Story上部の写真（任意）</label><input id="storyPhoto" type="file" accept="image/*"></div>
+        <div class="story-wrap"><canvas id="storyCanvas" width="1080" height="1920"></canvas></div>
+        <div class="actions" style="margin-top:10px"><button class="secondary" id="shareStoryBtn">共有</button><button class="secondary" id="downloadStoryBtn">PNG保存</button></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<nav class="bottom-nav" aria-label="メインナビ">
+  <button class="nav-btn active" data-view="today"><span>⌂</span>今日</button>
+  <button class="nav-btn" data-view="calendar"><span>▦</span>カレンダー</button>
+  <button class="nav-btn add" id="navAdd"><span>＋</span>追加</button>
+  <button class="nav-btn" data-view="goals"><span>◎</span>目標</button>
+  <button class="nav-btn" data-view="monthly"><span>▤</span>月次</button>
+</nav>
+
+<div class="sheet-backdrop" id="sheetBackdrop"><div class="sheet" id="sheet"><div class="grab"></div><div id="sheetContent"></div></div></div>
+<div class="toast" id="toast"></div>
+<input id="setupFile" type="file" accept="application/json,.json" hidden>
+<input id="restoreFile" type="file" accept="application/json,.json" hidden>
+
+<div class="update-banner" id="updateBanner" hidden>
+  <div><b>新しいバージョンがあります</b><small id="updateVersionText">バックアップしてから更新できます。</small></div>
+  <button id="updateLaterBtn">あとで</button>
+  <button class="update-primary" id="updateBackupBtn">バックアップして更新</button>
+</div>
+
+<div class="setup-overlay" id="setupOverlay">
+  <div class="setup-card">
+    <div class="setup-mark">26</div>
+    <h2>2026 GOALS</h2>
+    <p>この公開PWAには個人データを入れていません。最初に、手元の初期データJSONかバックアップJSONを読み込んでください。</p>
+    <button class="primary blue" id="setupImportBtn">初期データを読み込む</button>
+    <button class="primary" id="setupRestoreBtn">バックアップから復元</button>
+    <div class="install-note">初期データJSONとバックアップJSONはGitHubへアップロードせず、iPhone / iCloud Driveだけに保存してください。</div>
+  </div>
+</div>
+
+<script src="./app.js"></script>
+</body>
+</html>
