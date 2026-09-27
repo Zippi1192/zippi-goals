@@ -1,16 +1,16 @@
 'use strict';
 
 const APP_ID='2026-goals';
-const APP_VERSION='0.3.0';
-const BACKUP_VERSION=1;
+const APP_VERSION='0.3.2';
+const BACKUP_VERSION=2;
 const DB_NAME='2026GoalsDB';
-const DB_VERSION=3;
+const DB_VERSION=4;
 const SETTINGS_KEY='2026GoalsSettings_v3';
 const LEGACY_V2_KEY='goalTracker2026_v2';
 const MONTH_DAYS=[31,28,31,30,31,30,31,31,30,31,30,31];
 
 let db=null;
-let state={config:null,daily:{},events:[],monthMemos:Array(12).fill(''),manualProgress:{},lastTouched:{},legacyLists:{},meta:{}};
+let state={config:null,daily:{},events:[],monthMemos:Array(12).fill(''),manualProgress:{},lastTouched:{},legacyLists:{},challenges:[],snapshots:{},meta:{}};
 let settings=loadSettings();
 let YEAR=2026;
 let DAILY={};
@@ -81,6 +81,10 @@ function openDatabase(){
         const ev=req.transaction.objectStore('events');
         if(!ev.indexNames.contains('type'))ev.createIndex('type','type',{unique:false});
       }
+      if(old<4){
+        // v4 stores challenge / snapshot data in the existing meta store.
+        // No destructive object-store change is required.
+      }
     };
     req.onsuccess=()=>resolve(req.result);
     req.onerror=()=>reject(req.error);
@@ -109,6 +113,8 @@ async function loadStateFromDb(){
     manualProgress:meta.manualProgress||{},
     lastTouched:meta.lastTouched||{},
     legacyLists:meta.legacyLists||{},
+    challenges:Array.isArray(meta.challenges)?meta.challenges:[],
+    snapshots:meta.snapshots||{},
     meta:meta.appMeta||{}
   };
 }
@@ -123,6 +129,8 @@ function persistAllState(){
   meta.put({key:'manualProgress',value:clone(state.manualProgress||{})});
   meta.put({key:'lastTouched',value:clone(state.lastTouched||{})});
   meta.put({key:'legacyLists',value:clone(state.legacyLists||{})});
+  meta.put({key:'challenges',value:clone(state.challenges||[])});
+  meta.put({key:'snapshots',value:clone(state.snapshots||{})});
   meta.put({key:'appMeta',value:Object.assign({},state.meta||{},{schemaVersion:DB_VERSION,updatedAt:new Date().toISOString()})});
   return txPromise(tx);
 }
@@ -131,7 +139,7 @@ async function saveState(msg){
   catch(e){console.error(e);alert('保存に失敗しました。バックアップを取り、アプリを再起動してください。');}
 }
 async function wipeDatabase(){
-  state={config:null,daily:{},events:[],monthMemos:Array(12).fill(''),manualProgress:{},lastTouched:{},legacyLists:{},meta:{}};
+  state={config:null,daily:{},events:[],monthMemos:Array(12).fill(''),manualProgress:{},lastTouched:{},legacyLists:{},challenges:[],snapshots:{},meta:{}};
   await persistAllState();
 }
 
@@ -152,6 +160,8 @@ function backupObject(kind='backup'){
       manualProgress:clone(state.manualProgress),
       lastTouched:clone(state.lastTouched),
       legacyLists:clone(state.legacyLists),
+      challenges:clone(state.challenges),
+      snapshots:clone(state.snapshots),
       meta:clone(state.meta)
     },
     settings:{backupWarnDays:settings.backupWarnDays,backupUrgentDays:settings.backupUrgentDays}
@@ -178,8 +188,21 @@ async function saveBackupFile({forUpdate=false}={}){
 }
 function validateImport(obj){
   if(!obj||obj.app!==APP_ID||!obj.payload)throw new Error('2026 GOALS用のJSONではありません');
+  if(obj.kind==='patch')return obj;
   if(!obj.payload.config||!Array.isArray(obj.payload.config.goals))throw new Error('目標設定が含まれていません');
   return obj;
+}
+async function applyPatchObject(obj){
+  if(!hasConfig())throw new Error('先に初期データを読み込んでください');
+  const p=obj.payload||{};
+  if(p.config&&Array.isArray(p.config.goals))state.config=clone(p.config);
+  if(Array.isArray(p.challenges)){
+    const map=new Map((state.challenges||[]).map(x=>[x.id,x]));p.challenges.forEach(x=>map.set(x.id,clone(x)));state.challenges=[...map.values()];
+  }
+  if(p.snapshots)state.snapshots=Object.assign({},state.snapshots||{},clone(p.snapshots));
+  if(p.legacyLists)state.legacyLists=Object.assign({},state.legacyLists||{},clone(p.legacyLists));
+  state.meta=Object.assign({},state.meta||{},clone(p.meta||{}),{lastPatchAt:new Date().toISOString(),lastPatchVersion:obj.appVersion||null});
+  await persistAllState();applyConfig();renderAll();toast('設定パッチを適用しました');
 }
 async function restoreObject(obj,{initial=false}={}){
   validateImport(obj);
@@ -191,6 +214,8 @@ async function restoreObject(obj,{initial=false}={}){
     manualProgress:clone(obj.payload.manualProgress||{}),
     lastTouched:clone(obj.payload.lastTouched||{}),
     legacyLists:clone(obj.payload.legacyLists||{}),
+    challenges:clone(obj.payload.challenges||[]),
+    snapshots:clone(obj.payload.snapshots||{}),
     meta:Object.assign({},clone(obj.payload.meta||{}),{restoredAt:new Date().toISOString(),sourceKind:obj.kind||'backup'})
   };
   while(state.monthMemos.length<12)state.monthMemos.push('');
@@ -206,6 +231,11 @@ async function readJsonFile(file){return new Promise((resolve,reject)=>{const r=
 async function handleImportFile(file,{initial=false}={}){
   try{
     const obj=validateImport(await readJsonFile(file));
+    if(obj.kind==='patch'){
+      if(initial)throw new Error('設定パッチだけでは初期セットアップできません');
+      if(!confirm('設定・チェック項目を更新します。日次ログやイベントログは残ります。\nよろしいですか？'))return;
+      await applyPatchObject(obj);return;
+    }
     const msg=obj.kind==='seed'?'初期データを読み込みます。':'現在のデータをバックアップ内容で置き換えます。';
     if(!initial&&!confirm(`${msg}\nよろしいですか？`))return;
     await restoreObject(obj,{initial});
@@ -259,13 +289,21 @@ async function setDaily(date,key,val){state.daily[date]=state.daily[date]||{};if
 function cycleDaily(date,key){const cur=dailyState(date,key),next=cur===null?'yes':cur==='yes'?'no':null;setDaily(date,key,next);}
 function legacyMonthTotal(key,throughMonth=11){const legacy=DAILY[key]?.legacy||[];let success=0,total=0;for(let i=0;i<=throughMonth;i++){if(Number.isFinite(+legacy[i])){success+=+legacy[i];total+=MONTH_DAYS[i];}}return {success,total};}
 function firstLogMonth(key){const legacy=DAILY[key]?.legacy||[];let i=0;while(i<12&&Number.isFinite(+legacy[i]))i++;return i;}
+function habitResumeDate(key){
+  const raw=DAILY[key]?.resumeFrom;
+  if(!raw)return null;
+  try{return dateFromIso(raw);}catch(e){return null;}
+}
 function habitCounts(key,throughDate=isoLocal(nowForYear())){
   const through=dateFromIso(throughDate),throughMi=through.getMonth();
   const legacy=legacyMonthTotal(key,throughMi);
   let success=legacy.success,total=legacy.total;
   const startMi=firstLogMonth(key);
   if(throughMi<startMi)return {success,total,rate:total?success/total*100:0};
-  const start=new Date(YEAR,startMi,1,12);const end=new Date(Math.min(through.getTime(),new Date(YEAR,11,31,12).getTime()));
+  const naturalStart=new Date(YEAR,startMi,1,12);
+  const resume=habitResumeDate(key);
+  const start=resume&&resume>naturalStart?resume:naturalStart;
+  const end=new Date(Math.min(through.getTime(),new Date(YEAR,11,31,12).getTime()));
   if(end>=start)total+=daysBetween(start,end)+1;
   for(const [date,rec] of Object.entries(state.daily)){const d=dateFromIso(date);if(d>=start&&d<=end&&rec[key]==='yes')success++;}
   return {success,total,rate:total?success/total*100:0};
@@ -273,36 +311,60 @@ function habitCounts(key,throughDate=isoLocal(nowForYear())){
 function monthHabitAggregate(key,mi){
   const legacy=DAILY[key]?.legacy||[];
   if(Number.isFinite(+legacy[mi])){const success=+legacy[mi],total=MONTH_DAYS[mi];return {success,total,rate:success/total*100,source:'legacy'};}
-  let success=0;for(let d=1;d<=MONTH_DAYS[mi];d++){const iso=isoLocal(new Date(YEAR,mi,d,12));if(dailyState(iso,key)==='yes')success++;}
-  const now=nowForYear();let total=MONTH_DAYS[mi];if(mi===now.getMonth())total=now.getDate();if(mi>now.getMonth())total=0;
-  return {success,total,rate:total?success/total*100:0,source:'daily'};
+  const now=nowForYear();
+  let monthStart=new Date(YEAR,mi,1,12),monthEnd=new Date(YEAR,mi,MONTH_DAYS[mi],12);
+  if(mi>now.getMonth())return {success:0,total:0,rate:0,source:'daily'};
+  if(mi===now.getMonth()&&now<monthEnd)monthEnd=new Date(now.getFullYear(),now.getMonth(),now.getDate(),12);
+  const resume=habitResumeDate(key);
+  if(resume&&resume>monthStart)monthStart=resume;
+  if(monthEnd<monthStart)return {success:0,total:0,rate:0,source:resume?'resume':'daily'};
+  let success=0;
+  for(let d=new Date(monthStart);d<=monthEnd;d.setDate(d.getDate()+1)){const iso=isoLocal(d);if(dailyState(iso,key)==='yes')success++;}
+  const total=daysBetween(monthStart,monthEnd)+1;
+  return {success,total,rate:total?success/total*100:0,source:resume?'resume':'daily'};
 }
 function latestEvent(id){return eventsForGoal(id).slice().sort((a,b)=>(b.date+(b.createdAt||'')).localeCompare(a.date+(a.createdAt||'')))[0]||null;}
+function challengesForGoal(id,category=null){return (state.challenges||[]).filter(c=>+c.goalId===+id&&(!category||c.category===category));}
+function challengeSummary(id,category='bonus'){const xs=challengesForGoal(id,category),done=xs.filter(x=>x.done).length;return {items:xs,done,total:xs.length};}
 function goalMetric(g){
   if(!g)return {pct:0,text:'-'};
   if(g.kind==='count'){const add=eventsForGoal(g.id).filter(e=>e.counted!==false).length,current=(g.base||0)+add;return {current,target:g.target,pct:g.target?clamp(current/g.target*100):0,text:`${current}/${g.target}${g.unit||''}`};}
   if(g.kind==='one'){const done=eventsForGoal(g.id).some(e=>e.complete===true);const current=(g.base||0)+(done?1:0);return {current,target:g.target,pct:g.target?clamp(current/g.target*100):0,text:`${current}/${g.target}${g.unit||''}`};}
   if(g.kind==='escape'){const es=eventsForGoal(g.id).filter(e=>e.counted!==false);const success=(g.baseSuccess||0)+es.filter(e=>e.result==='success').length,total=(g.baseTotal||0)+es.length,rate=total?success/total*100:0;return {current:rate,target:g.target,pct:g.target?clamp(rate/g.target*100):0,text:`${success}/${total} · ${rate.toFixed(1)}%`};}
   if(g.kind==='habit'){const h=habitCounts(g.habit);return {current:h.rate,target:g.target,pct:g.target?clamp(h.rate/g.target*100):0,text:`${h.success}/${h.total} · ${h.rate.toFixed(0)}%`};}
-  if(g.kind==='lower'){const es=eventsForGoal(g.id).filter(e=>Number.isFinite(+e.value));if(!es.length)return {current:null,target:g.target,pct:0,text:'未記録'};const best=Math.min(...es.map(e=>+e.value));return {current:best,target:g.target,pct:clamp(g.target/best*100),text:`BEST ${best}${g.unit||''}`};}
-  if(g.kind==='range'){const e=latestEvent(g.id);if(!e||!Number.isFinite(+e.value))return {current:null,pct:0,text:'未記録'};const v=+e.value,pct=v>=g.min&&v<=g.max?100:clamp(100-Math.min(Math.abs(v-g.min),Math.abs(v-g.max))*20);return {current:v,pct,text:`${v.toFixed(1)}${g.unit||''}`};}
+  if(g.kind==='lower'){const vals=eventsForGoal(g.id).filter(e=>Number.isFinite(+e.value)).map(e=>+e.value);if(Number.isFinite(+g.baseBest))vals.push(+g.baseBest);if(!vals.length)return {current:null,target:g.target,pct:0,text:'未記録'};const best=Math.min(...vals);return {current:best,target:g.target,pct:clamp(g.target/best*100),text:`BEST ${best}${g.unit||''}`};}
+  if(g.kind==='range'){const e=latestEvent(g.id);const raw=e&&Number.isFinite(+e.value)?+e.value:(Number.isFinite(+g.baseValue)?+g.baseValue:null);if(raw===null)return {current:null,pct:0,text:'未記録'};const v=raw,pct=v>=g.min&&v<=g.max?100:clamp(100-Math.min(Math.abs(v-g.min),Math.abs(v-g.max))*20);return {current:v,pct,text:`${v.toFixed(1)}${g.unit||''}`};}
+  if(g.kind==='checklist'){
+    const xs=challengesForGoal(g.id,'main'),done=xs.filter(x=>x.done).length,target=+g.checkTarget||Math.max(1,xs.length);
+    return {current:done,target,pct:clamp(done/target*100),text:g.checkLabel?`${g.checkLabel} ${done}/${target}`:`${done}/${target}項目`};
+  }
+  if(g.kind==='status'){
+    const e=latestEvent(g.id),status=e?.status||g.baseStatus||'good';
+    const labels={good:'健康継続中',attention:'要注意',recovered:'回復'};const text=e?.title||labels[status]||g.baseStatusText||'継続中';
+    return {current:status,pct:status==='attention'?50:100,text};
+  }
   if(g.kind==='manual'){const es=eventsForGoal(g.id).filter(e=>Number.isFinite(+e.progress));const latest=es.slice().sort((a,b)=>(b.date+(b.createdAt||'')).localeCompare(a.date+(a.createdAt||'')))[0];const p=latest?+latest.progress:+(state.manualProgress[g.id]??g.baseProgress??0);return {current:p,pct:clamp(p),text:`進捗 ${p}%`};}
   return {pct:0,text:'-'};
 }
-function eventLabel(e){const t=EVENT_TYPES[e.type]||{label:'記録',emoji:'•'};let detail='';if(t.fields==='escape')detail=e.result==='success'?'成功':'失敗';else if(['score','minutes','weight'].includes(t.fields))detail=`${e.value}${t.valueUnit||''}`;else if(e.complete)detail='完了';else if(Number.isFinite(+e.progress))detail=`${e.progress}%`;else detail=e.title||e.name||'';return {emoji:t.emoji||'•',label:t.label||'記録',detail};}
-
-// ---------- Rendering ----------
-function renderAll(){if(!hasConfig())return;renderHeader();renderToday();renderCalendar();renderGoals();renderMonthly();renderBackupNotices();}
-function renderHeader(){const d=nowForYear();document.getElementById('headerSub').textContent=`${d.getMonth()+1}月${d.getDate()}日 · IndexedDB保存 · v${APP_VERSION}`;}
-function renderToday(){
-  const today=isoLocal(nowForYear()),d=dateFromIso(today);selectedDate=selectedDate||today;
-  document.getElementById('todayDateLabel').textContent=new Intl.DateTimeFormat('ja-JP',{year:'numeric',month:'long',day:'numeric',weekday:'long'}).format(d);
-  document.getElementById('todayGreeting').textContent='TODAY';document.getElementById('yearDays').textContent=`今年 ${dayOfYear(d)} / ${daysInYear(YEAR)}日`;
-  let yes=0;const entries=Object.entries(DAILY);document.getElementById('todayDaily').innerHTML=entries.map(([key,x])=>{const st=dailyState(today,key);if(st==='yes')yes++;return dailyRowHtml(today,key,x,st);}).join('');
-  document.getElementById('todayDone').textContent=`今日 ○ ${yes}/${entries.length}`;
-  document.querySelectorAll('#todayDaily .state-toggle').forEach(b=>b.onclick=()=>cycleDaily(today,b.dataset.key));
-  renderWeek();renderQuick();renderTodayEvents();
+function goalAchieved(g,m=goalMetric(g),mi=null){
+  if(typeof m?.onTrack==='boolean')return m.onTrack;
+  if(g.onTrackMode==='monthlyPublished'){
+    const month=mi===null?nowForYear().getMonth():mi,required=month+1,current=Number(m.current??0);
+    return current>=required;
+  }
+  return m.pct>=100;
 }
+function snapshotKey(mi){return `${YEAR}-${String(mi+1).padStart(2,'0')}`;}
+function metricForOutput(g,mi){const snap=state.snapshots?.[snapshotKey(mi)];return snap?.metrics?.[g.id]||goalMetric(g);}
+function bonusForOutput(g,mi){const snap=state.snapshots?.[snapshotKey(mi)];if(snap?.bonus?.[g.id])return snap.bonus[g.id];const b=challengeSummary(g.id,'bonus');return {done:b.done,total:b.total,items:b.items.map(x=>({label:x.label,done:!!x.done}))};}
+function outputAchievedCount(mi){return GOALS.filter(g=>goalAchieved(g,metricForOutput(g,mi),mi)).length;}
+async function captureSnapshot(mi){
+  const key=snapshotKey(mi),metrics={},bonus={};
+  GOALS.forEach(g=>{metrics[g.id]=clone(goalMetric(g));const b=challengeSummary(g.id,'bonus');bonus[g.id]={done:b.done,total:b.total,items:b.items.map(x=>({label:x.label,done:!!x.done}))};});
+  state.snapshots=state.snapshots||{};state.snapshots[key]={capturedAt:new Date().toISOString(),metrics,bonus,memo:state.monthMemos[mi]||''};
+  await saveState(`${mi+1}月の状態を保存しました`);renderMonthly();
+}
+function eventLabel(e){const t=EVENT_TYPES[e.type]||{label:'記録',emoji:'•'};let detail='';if(t.fields==='escape')detail=e.result==='success'?'成功':'失敗';else if(['score','minutes','weight'].includes(t.fields))detail=`${e.value}${t.valueUnit||''}`;else if(t.fields==='health')detail=({good:'健康',attention:'要注意',recovered:'回復'}[e.status]||'健康メモ');else if(e.complete)detail='完了';else if(Number.isFinite(+e.progress))detail=`${e.progress}%`;else detail=e.title||e.name||'';return {emoji:t.emoji||'•',label:t.label||'記録',detail};}
 function dailyRowHtml(date,key,x,st){const label=st==='yes'?'○':st==='no'?'×':'未';return `<div class="daily-row"><div class="emoji">${x.emoji||'✓'}</div><div><b>${esc(x.label||key)}</b><small>${st==='yes'?'記録済み':st==='no'?'やってない':'まだ未記録'}</small></div><button class="state-toggle ${st||''}" data-key="${esc(key)}" data-date="${date}">${label}</button></div>`;}
 function renderWeek(){
   const now=nowForYear(),dow=now.getDay(),diff=dow===0?-6:1-dow,start=new Date(now);start.setDate(now.getDate()+diff);start.setHours(12,0,0,0);
@@ -331,8 +393,28 @@ function openDateSheet(date){
   document.getElementById('saveDateTouch').onclick=async()=>{state.lastTouched[date]=new Date().toISOString();await saveState('この日の記録を保存しました');renderAll();openDateSheet(date);};
   document.getElementById('addToDate').onclick=()=>openAddChooser(date);bindEventEdit('#sheetEvents');
 }
-function renderGoals(){document.getElementById('goalsList').innerHTML=GOALS.map(g=>{const m=goalMetric(g),done=m.pct>=100;return `<button class="goal-card" data-goal="${g.id}"><div class="goal-head"><div class="goal-num">${String(g.id).padStart(2,'0')}</div><div style="min-width:0"><div class="goal-title">${esc(g.title)}</div><div class="goal-detail">${esc(g.detail||'')}</div></div><div class="goal-right"><div class="goal-value">${esc(m.text)}</div><div class="goal-pct">${Math.round(m.pct)}%</div></div></div><div class="goal-bar"><i class="${done?'done':''}" style="width:${Math.min(m.pct,100)}%"></i></div></button>`;}).join('');document.querySelectorAll('.goal-card').forEach(b=>b.onclick=()=>openGoalSheet(+b.dataset.goal));}
-function openGoalSheet(id){const g=goalById(id);if(!g)return;const m=goalMetric(g),es=eventsForGoal(id).slice().sort((a,b)=>(b.date+(b.createdAt||'')).localeCompare(a.date+(a.createdAt||''))),legacy=g.eventType&&state.legacyLists[g.eventType];const html=`<div class="sheet-title"><div><h2>${String(id).padStart(2,'0')} ${esc(g.title)}</h2><span class="badge ${m.pct>=100?'good':''}">${esc(m.text)}</span></div><button class="sheet-close" data-close>×</button></div><div class="card"><div class="goal-detail">${esc(g.detail||'')}</div><div class="progress-val" style="font-size:30px">${Math.round(m.pct)}%</div><div class="bar"><i style="width:${Math.min(100,m.pct)}%"></i></div></div>${g.eventType?'<button class="primary blue" id="goalAdd">＋ この目標を更新</button>':''}<div class="section-head"><div><h2>更新履歴</h2><p>新しく追加したログ。</p></div></div><div id="goalEvents" class="event-list">${es.length?es.map(eventRowHtml).join(''):'<div class="card empty">新しいログはまだありません</div>'}</div>${legacy?`<div class="section-head"><div><h2>これまでのメモ</h2><p>旧メモから引き継いだ参考リスト。集計は基準値に含まれています。</p></div></div><div class="card small-text">${legacy.slice(0,80).map(x=>esc(x)).join('<br>')}</div>`:''}`;openSheet(html);if(document.getElementById('goalAdd'))document.getElementById('goalAdd').onclick=()=>openEventForm(g.eventType,isoLocal(nowForYear()));bindEventEdit('#goalEvents');}
+function renderGoals(){document.getElementById('goalsList').innerHTML=GOALS.map(g=>{const m=goalMetric(g),done=goalAchieved(g,m),bonus=challengeSummary(g.id,'bonus');return `<button class="goal-card" data-goal="${g.id}"><div class="goal-head"><div class="goal-num">${String(g.id).padStart(2,'0')}</div><div style="min-width:0"><div class="goal-title">${esc(g.title)}</div><div class="goal-detail">${esc(g.detail||'')}</div>${bonus.total?`<div class="bonus-mini">★ BONUS ${bonus.done}/${bonus.total}</div>`:''}</div><div class="goal-right"><div class="goal-value">${esc(m.text)}</div><div class="goal-pct">${done?'✓ 現状クリア':`${Math.round(m.pct)}%`}</div></div></div><div class="goal-bar"><i class="${done?'done':''}" style="width:${Math.min(m.pct,100)}%"></i></div></button>`;}).join('');document.querySelectorAll('.goal-card').forEach(b=>b.onclick=()=>openGoalSheet(+b.dataset.goal));}
+function challengeRows(id,category){const xs=challengesForGoal(id,category);return xs.length?xs.map(c=>`<div class="challenge-row ${c.done?'done':''}"><button class="challenge-check" data-challenge="${esc(c.id)}">${c.done?'✓':'○'}</button><div class="challenge-label">${esc(c.label)}</div><button class="mini-btn edit-challenge" data-challenge="${esc(c.id)}">修正</button></div>`).join(''):'<div class="card empty">まだありません。好きな項目を追加できます。</div>';}
+function openGoalSheet(id){
+  const g=goalById(id);if(!g)return;const m=goalMetric(g),es=eventsForGoal(id).slice().sort((a,b)=>(b.date+(b.createdAt||'')).localeCompare(a.date+(a.createdAt||''))),legacy=g.eventType&&state.legacyLists[g.eventType];
+  const main=(g.kind==='checklist')?`<div class="section-head"><div><h2>${g.checkSectionTitle||'CHECKLIST'}</h2><p>チェック項目は自分で追加・編集できます。</p></div><button class="link-btn" id="addMainChallenge">＋追加</button></div><div id="mainChallenges" class="challenge-list">${challengeRows(id,'main')}</div>`:'';
+  const bonus=`<div class="section-head"><div><h2>★ BONUS CHALLENGE</h2><p>本目標とは別枠。達成しても主目標の進捗率は変わりません。</p></div><button class="link-btn" id="addBonusChallenge">＋追加</button></div><div id="bonusChallenges" class="challenge-list">${challengeRows(id,'bonus')}</div>`;
+  const html=`<div class="sheet-title"><div><h2>${String(id).padStart(2,'0')} ${esc(g.title)}</h2><span class="badge ${goalAchieved(g,m)?'good':''}">${esc(m.text)}</span></div><button class="sheet-close" data-close>×</button></div><div class="card"><div class="goal-detail">${esc(g.detail||'')}</div><div class="progress-val" style="font-size:30px">${goalAchieved(g,m)?'現状クリア ✓':`${Math.round(m.pct)}%`}</div><div class="bar"><i style="width:${Math.min(100,m.pct)}%"></i></div></div>${main}${bonus}${g.eventType?'<button class="primary blue" id="goalAdd">＋ この目標のログを追加</button>':''}<div class="section-head"><div><h2>更新履歴</h2><p>新しく追加したログ。</p></div></div><div id="goalEvents" class="event-list">${es.length?es.map(eventRowHtml).join(''):'<div class="card empty">新しいログはまだありません</div>'}</div>${legacy?`<div class="section-head"><div><h2>これまでのメモ</h2><p>旧メモから引き継いだ参考リスト。集計は基準値に含まれています。</p></div></div><div class="card small-text">${legacy.slice(0,80).map(x=>esc(x)).join('<br>')}</div>`:''}`;
+  openSheet(html);
+  if(document.getElementById('goalAdd'))document.getElementById('goalAdd').onclick=()=>openEventForm(g.eventType,isoLocal(nowForYear()));
+  if(document.getElementById('addMainChallenge'))document.getElementById('addMainChallenge').onclick=()=>openChallengeForm(id,'main');
+  document.getElementById('addBonusChallenge').onclick=()=>openChallengeForm(id,'bonus');
+  document.querySelectorAll('.challenge-check').forEach(b=>b.onclick=()=>toggleChallenge(b.dataset.challenge,id));
+  document.querySelectorAll('.edit-challenge').forEach(b=>b.onclick=()=>openChallengeForm(id,null,b.dataset.challenge));
+  bindEventEdit('#goalEvents');
+}
+function openChallengeForm(goalId,category='bonus',editId=null){
+  const c=editId?(state.challenges||[]).find(x=>x.id===editId):null;category=c?.category||category||'bonus';const g=goalById(goalId);if(!g)return;
+  openSheet(`<div class="sheet-title"><div><h2>${category==='bonus'?'★ BONUS':'✓ CHECKLIST'} ${c?'修正':'追加'}</h2><span class="badge">${String(goalId).padStart(2,'0')}</span></div><button class="sheet-close" data-close>×</button></div><div class="card"><div class="field"><label>項目名</label><input id="challengeLabel" value="${esc(c?.label||'')}" placeholder="例：アベレージ100切り"></div>${g.kind==='checklist'?`<div class="field"><label>種類</label><select id="challengeCategory"><option value="main" ${category==='main'?'selected':''}>メインCHECKLIST</option><option value="bonus" ${category==='bonus'?'selected':''}>BONUS CHALLENGE</option></select></div>`:''}<label class="check-row"><input id="challengeDone" type="checkbox" ${c?.done?'checked':''}><span>達成済みにする</span></label><div class="actions" style="margin-top:12px"><button class="secondary" id="saveChallengeBtn">${c?'更新':'追加'}</button>${c?'<button class="danger" id="deleteChallengeBtn">削除</button>':''}</div></div>`);
+  document.getElementById('saveChallengeBtn').onclick=async()=>{const label=document.getElementById('challengeLabel').value.trim();if(!label){toast('項目名を入力してください');return;}const cat=document.getElementById('challengeCategory')?.value||category;const done=document.getElementById('challengeDone').checked;if(c){c.label=label;c.category=cat;c.done=done;c.updatedAt=new Date().toISOString();if(done&&!c.completedAt)c.completedAt=new Date().toISOString();if(!done)c.completedAt=null;}else{state.challenges.push({id:uuid(),goalId,label,category:cat,done,createdAt:new Date().toISOString(),completedAt:done?new Date().toISOString():null});}await saveState(c?'チェック項目を更新しました':'チェック項目を追加しました');renderAll();openGoalSheet(goalId);};
+  if(c)document.getElementById('deleteChallengeBtn').onclick=async()=>{if(confirm('このチェック項目を削除しますか？')){state.challenges=state.challenges.filter(x=>x.id!==c.id);await saveState('削除しました');renderAll();openGoalSheet(goalId);}};
+}
+async function toggleChallenge(id,goalId){const c=(state.challenges||[]).find(x=>x.id===id);if(!c)return;c.done=!c.done;c.updatedAt=new Date().toISOString();c.completedAt=c.done?new Date().toISOString():null;await saveState(c.done?'達成にしました':'未達に戻しました');renderAll();openGoalSheet(goalId);}
 function openAddChooser(date=isoLocal(nowForYear())){const validQuick=QUICK_TYPES.filter(k=>EVENT_TYPES[k]);const quick=validQuick.map(k=>{const t=EVENT_TYPES[k];return `<button class="action-chip choose-type" data-type="${esc(k)}"><span>${t.emoji||'＋'}</span>${esc(t.label||k)}</button>`;}).join('');const rest=Object.keys(EVENT_TYPES).filter(k=>!validQuick.includes(k)).map(k=>{const t=EVENT_TYPES[k];return `<button class="action-chip choose-type" data-type="${esc(k)}"><span>${t.emoji||'＋'}</span>${esc(t.label||k)}</button>`;}).join('');openSheet(`<div class="sheet-title"><div><h2>＋ 記録を追加</h2><span class="badge">${fmtDate(date,{month:'numeric',day:'numeric'})}</span></div><button class="sheet-close" data-close>×</button></div><div class="section-head"><div><h2>よく使う</h2></div></div><div class="action-grid">${quick||'<div class="small-text">設定なし</div>'}</div><div class="section-head"><div><h2>その他</h2></div></div><div class="action-grid">${rest}</div>`);document.querySelectorAll('.choose-type').forEach(b=>b.onclick=()=>openEventForm(b.dataset.type,date));}
 function openEventForm(type,date=isoLocal(nowForYear()),editId=null){
   const t=EVENT_TYPES[type];if(!t)return;const e=editId?state.events.find(x=>x.id===editId):null;date=e?.date||date;let fields='';const titleVal=esc(e?.title||''),noteVal=esc(e?.note||'');
@@ -343,20 +425,53 @@ function openEventForm(type,date=isoLocal(nowForYear()),editId=null){
   if(t.fields==='weight')fields=`<div class="field"><label>${esc(t.valueLabel||'体重')}</label><input id="evValue" type="number" inputmode="decimal" step="0.1" value="${e?.value??''}" placeholder="${esc(t.placeholder||'')}" ></div>`;
   if(t.fields==='minutes')fields=`<div class="field"><label>${esc(t.valueLabel||'タイム（分）')}</label><input id="evValue" type="number" inputmode="decimal" step="0.1" value="${e?.value??''}" placeholder="${esc(t.placeholder||'')}" ></div>`;
   if(t.fields==='progress')fields=`<div class="field"><label>今回のメモ / 内容</label><input id="evTitle" value="${titleVal}" placeholder="${esc(t.placeholder||'内容')}"></div><div class="field"><label>この時点の進捗 %</label><input id="evProgress" type="number" min="0" max="100" inputmode="numeric" value="${e?.progress??''}" placeholder="50"></div>`;
+  if(t.fields==='health')fields=`<div class="field"><label>状態</label><select id="evStatus"><option value="good" ${!e||e?.status==='good'?'selected':''}>○ 健康 / 良好</option><option value="attention" ${e?.status==='attention'?'selected':''}>△ 要注意</option><option value="recovered" ${e?.status==='recovered'?'selected':''}>↗ 回復</option></select></div><div class="field"><label>ひとこと（任意）</label><input id="evTitle" value="${titleVal}" placeholder="例：人間ドック問題なし"></div>`;
   if(t.fields==='complete')fields=`<div class="field"><label>内容</label><input id="evTitle" value="${titleVal}" placeholder="何を達成したか"></div><label class="check-row"><input id="evComplete" type="checkbox" ${e?.complete?'checked':''}><span>完了としてカウントする</span></label>`;
   const html=`<div class="sheet-title"><div><h2>${t.emoji||'＋'} ${editId?'記録を修正':esc(t.label||type)+'を追加'}</h2></div><button class="sheet-close" data-close>×</button></div><div class="card"><div class="field"><label>日付</label><input id="evDate" type="date" value="${date}" min="${YEAR}-01-01" max="${YEAR}-12-31"></div>${fields}<div class="field"><label>メモ（任意）</label><textarea id="evNote" placeholder="ひとこと">${noteVal}</textarea></div><div class="actions"><button class="secondary" id="saveEventBtn">${editId?'更新':'保存'}</button>${editId?'<button class="danger" id="deleteEventBtn">削除</button>':''}</div></div>`;openSheet(html);
-  document.getElementById('saveEventBtn').onclick=async()=>{const obj=e||{id:uuid(),type,goalId:t.goalId,createdAt:new Date().toISOString()};obj.date=document.getElementById('evDate').value;obj.note=document.getElementById('evNote').value.trim();if(document.getElementById('evTitle'))obj.title=document.getElementById('evTitle').value.trim();if(document.getElementById('evName'))obj.name=document.getElementById('evName').value.trim();if(document.getElementById('evGroup'))obj.group=document.getElementById('evGroup').value.trim();if(document.getElementById('evResult'))obj.result=document.getElementById('evResult').value;if(document.getElementById('evCounted'))obj.counted=document.getElementById('evCounted').checked;if(document.getElementById('evValue'))obj.value=+document.getElementById('evValue').value;if(document.getElementById('evProgress'))obj.progress=clamp(+document.getElementById('evProgress').value);if(document.getElementById('evComplete'))obj.complete=document.getElementById('evComplete').checked;if(!editId)state.events.push(obj);await saveState(editId?'更新しました':'追加しました');closeSheet();renderAll();};
+  document.getElementById('saveEventBtn').onclick=async()=>{const obj=e||{id:uuid(),type,goalId:t.goalId,createdAt:new Date().toISOString()};obj.date=document.getElementById('evDate').value;obj.note=document.getElementById('evNote').value.trim();if(document.getElementById('evTitle'))obj.title=document.getElementById('evTitle').value.trim();if(document.getElementById('evName'))obj.name=document.getElementById('evName').value.trim();if(document.getElementById('evGroup'))obj.group=document.getElementById('evGroup').value.trim();if(document.getElementById('evResult'))obj.result=document.getElementById('evResult').value;if(document.getElementById('evCounted'))obj.counted=document.getElementById('evCounted').checked;if(document.getElementById('evStatus'))obj.status=document.getElementById('evStatus').value;if(document.getElementById('evValue'))obj.value=+document.getElementById('evValue').value;if(document.getElementById('evProgress'))obj.progress=clamp(+document.getElementById('evProgress').value);if(document.getElementById('evComplete'))obj.complete=document.getElementById('evComplete').checked;if(!editId)state.events.push(obj);await saveState(editId?'更新しました':'追加しました');closeSheet();renderAll();};
   if(editId)document.getElementById('deleteEventBtn').onclick=async()=>{if(confirm('この記録を削除しますか？')){state.events=state.events.filter(x=>x.id!==editId);await saveState('削除しました');closeSheet();renderAll();}};
 }
 function renderMonthly(){
-  const sel=document.getElementById('summaryMonth');if(!sel.options.length)sel.innerHTML=Array.from({length:12},(_,i)=>`<option value="${i}">${i+1}月</option>`).join('');if(sel.dataset.init!=='1'){sel.value=nowForYear().getMonth();sel.dataset.init='1';}const mi=+sel.value;
-  document.getElementById('monthlyHabits').innerHTML=Object.entries(DAILY).map(([key,x])=>{const a=monthHabitAggregate(key,mi);return `<div class="month-habit"><div class="month-habit-top"><div><b>${x.emoji||'✓'} ${esc(x.label||key)}</b><br><small>${a.source==='legacy'?'既存の月間集計から':'日次ログから'}</small></div><strong>${a.total?Math.round(a.rate):0}%</strong></div><div class="bar" style="margin-top:9px"><i style="width:${Math.min(a.rate,100)}%"></i></div><small>${a.success}/${a.total||0}日</small></div>`;}).join('');
+  const sel=document.getElementById('summaryMonth');if(!sel.options.length)sel.innerHTML=Array.from({length:12},(_,i)=>`<option value="${i}">${i+1}月まで</option>`).join('');if(sel.dataset.init!=='1'){sel.value=nowForYear().getMonth();sel.dataset.init='1';}const mi=+sel.value;
+  document.getElementById('monthlyHabits').innerHTML=Object.entries(DAILY).map(([key,x])=>{const a=monthHabitAggregate(key,mi);return `<div class="month-habit"><div class="month-habit-top"><div><b>${x.emoji||'✓'} ${esc(x.label||key)}</b><br><small>${a.source==='legacy'?'既存の月間集計から':a.source==='resume'?'PWA記録開始日から':'日次ログから'}</small></div><strong>${a.total?Math.round(a.rate):0}%</strong></div><div class="bar" style="margin-top:9px"><i style="width:${Math.min(a.rate,100)}%"></i></div><small>${a.success}/${a.total||0}日</small></div>`;}).join('');
   const counts={};state.events.filter(e=>dateFromIso(e.date).getMonth()===mi).forEach(e=>counts[e.type]=(counts[e.type]||0)+1);const keys=state.config.monthlyEventTypes||QUICK_TYPES;document.getElementById('monthlyEvents').innerHTML=keys.filter(k=>EVENT_TYPES[k]).map(k=>{const t=EVENT_TYPES[k];return `<div class="month-event"><b>${t.emoji||'•'} ${esc(t.label||k)}</b><div class="n">${counts[k]||0}</div><small>今月追加</small></div>`;}).join('');
-  document.getElementById('monthMemo').value=state.monthMemos[mi]||'';renderStory();renderBackupNotices();
+  document.getElementById('monthMemo').value=state.monthMemos[mi]||'';
+  const snap=state.snapshots?.[snapshotKey(mi)],status=document.getElementById('snapshotStatus');if(status)status.innerHTML=snap?`<span class="badge good">保存済み</span> ${new Date(snap.capturedAt).toLocaleDateString('ja-JP')}`:'<span class="badge">LIVE</span> 現在のデータでプレビュー中';
+  const preview=document.getElementById('outputTextPreview');if(preview)preview.value=monthlyText(mi);
+  renderStory();renderBackupNotices();
 }
-function monthlyText(mi=+document.getElementById('summaryMonth').value){let s=`${YEAR}年 ${mi+1}月 進捗\n\n`;GOALS.forEach(g=>{const m=goalMetric(g);s+=`${String(g.id).padStart(2,'0')} ${g.title}\n  ${m.text} / 進捗 ${Math.round(m.pct)}%\n`;});s+='\n■習慣\n';Object.entries(DAILY).forEach(([key,x])=>{const a=monthHabitAggregate(key,mi);s+=`${x.label}: ${a.success}/${a.total||0} ${a.total?Math.round(a.rate):0}%\n`;});const memo=state.monthMemos[mi];if(memo)s+=`\n■メモ\n${memo}\n`;return s;}
+function circled(n){const xs=['','①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩','⑪','⑫','⑬','⑭','⑮','⑯','⑰','⑱','⑲','⑳'];return xs[n]||String(n);}
+function previousOutputMetric(g,mi){if(mi<=0)return null;return state.snapshots?.[snapshotKey(mi-1)]?.metrics?.[g.id]||null;}
+function outputDelta(g,mi,m){const p=previousOutputMetric(g,mi);if(!p||!Number.isFinite(+m.current)||!Number.isFinite(+p.current))return '';
+  const d=+m.current-+p.current;if(Math.abs(d)<.001)return '';
+  if(['count','one','checklist'].includes(g.kind))return ` (${d>0?'+':''}${Number.isInteger(d)?d:d.toFixed(1)})`;
+  if(g.kind==='lower')return d<0?` (${Math.abs(d).toFixed(Number.isInteger(d)?0:1)}改善)`:` (+${d.toFixed(Number.isInteger(d)?0:1)})`;
+  if(g.kind==='range')return ` (${d>0?'+':''}${d.toFixed(1)}${g.unit||''})`;
+  if(['habit','escape'].includes(g.kind))return ` (${d>0?'+':''}${d.toFixed(0)}pt)`;
+  return '';
+}
+function monthlyText(mi=+document.getElementById('summaryMonth').value){
+  const achieved=outputAchievedCount(mi);let s=`${YEAR}年 ${mi+1}月まで 進捗
+現状クリア ${achieved}/${GOALS.length} 🎊
+
+`;
+  GOALS.forEach(g=>{const m=metricForOutput(g,mi),ok=goalAchieved(g,m,mi),b=bonusForOutput(g,mi);s+=`${circled(g.id)} ${g.title}${ok?' 🎊':''}
+  → ${m.text}${outputDelta(g,mi,m)}
+`;if(b.total){const items=b.items.map(x=>`${x.done?'✓':'□'}${x.label}`).join(' / ');s+=`  ★BONUS ${items}
+`;}});
+  s+=`\n■習慣（月間）\n`;Object.entries(DAILY).forEach(([key,x])=>{const a=monthHabitAggregate(key,mi);s+=`${x.emoji||'✓'} ${x.label}: ${a.success}/${a.total||0} ${a.total?Math.round(a.rate):0}%
+`;});const memo=state.monthMemos[mi]||state.snapshots?.[snapshotKey(mi)]?.memo;if(memo)s+=`
+■ひとこと
+${memo}
+`;return s;
+}
 function renderStory(){
-  const c=document.getElementById('storyCanvas');if(!c||!hasConfig())return;const ctx=c.getContext('2d'),mi=+document.getElementById('summaryMonth').value;ctx.clearRect(0,0,1080,1920);const grad=ctx.createLinearGradient(0,0,0,1920);grad.addColorStop(0,'#315eea');grad.addColorStop(.52,'#647b9c');grad.addColorStop(1,'#555437');ctx.fillStyle=grad;ctx.fillRect(0,0,1080,1920);let y=120;if(storyImage){cover(ctx,storyImage,70,50,940,560);ctx.fillStyle='rgba(0,0,0,.16)';ctx.fillRect(70,50,940,560);y=650;}ctx.fillStyle='rgba(255,255,255,.96)';rounded(ctx,130,y-20,820,120,50);ctx.fill();ctx.fillStyle='#315eea';ctx.textAlign='center';ctx.font='700 50px -apple-system,sans-serif';ctx.fillText(`${YEAR}.${String(mi+1).padStart(2,'0')} PROGRESS`,540,y+55);ctx.textAlign='left';y+=145;const ids=(state.config.storyGoalIds||state.config.quickGoalIds||GOALS.slice(0,10).map(g=>g.id)).slice(0,10);ids.map(id=>goalById(id)).filter(Boolean).forEach((g,i)=>{const m=goalMetric(g),yy=y+i*77;ctx.fillStyle='rgba(255,255,255,.92)';rounded(ctx,90,yy,900,62,21);ctx.fill();ctx.fillStyle='#27344d';ctx.font='700 25px -apple-system,sans-serif';ctx.fillText(`${String(g.id).padStart(2,'0')} ${shortText(g.shortTitle||g.title,20)}`,120,yy+39);ctx.textAlign='right';ctx.fillStyle=m.pct>=100?'#16855f':'#4e70d9';ctx.fillText(shortText(m.text,18),955,yy+39);ctx.textAlign='left';});const memo=state.monthMemos[mi]||'';if(memo){ctx.fillStyle='rgba(255,249,230,.96)';rounded(ctx,100,1585,880,185,34);ctx.fill();ctx.fillStyle='#343b4c';ctx.font='30px -apple-system,sans-serif';wrapText(ctx,memo,145,1640,790,43,3);}ctx.textAlign='center';ctx.fillStyle='rgba(255,255,255,.96)';ctx.font='25px -apple-system,sans-serif';ctx.fillText(`${state.config.appTitle||'2026 GOALS'} · monthly log`,540,1858);ctx.textAlign='left';
+  const c=document.getElementById('storyCanvas');if(!c||!hasConfig())return;const ctx=c.getContext('2d'),mi=+document.getElementById('summaryMonth').value;ctx.clearRect(0,0,1080,1920);
+  const grad=ctx.createLinearGradient(0,0,0,1920);grad.addColorStop(0,'#315eea');grad.addColorStop(.45,'#6d7e99');grad.addColorStop(1,'#4e5140');ctx.fillStyle=grad;ctx.fillRect(0,0,1080,1920);
+  let listY=385;if(storyImage){cover(ctx,storyImage,0,0,1080,470);const shade=ctx.createLinearGradient(0,160,0,500);shade.addColorStop(0,'rgba(0,0,0,0)');shade.addColorStop(1,'rgba(0,0,0,.38)');ctx.fillStyle=shade;ctx.fillRect(0,120,1080,400);listY=440;}
+  ctx.fillStyle='rgba(255,255,255,.96)';rounded(ctx,92,70,896,155,40);ctx.fill();ctx.fillStyle='#1d315e';ctx.textAlign='center';ctx.font='800 56px -apple-system,sans-serif';ctx.fillText(`${mi+1}月まで 進捗`,540,140);ctx.font='800 34px -apple-system,sans-serif';ctx.fillStyle='#315eea';ctx.fillText(`現状クリア ${outputAchievedCount(mi)} / ${GOALS.length}`,540,190);ctx.textAlign='left';
+  const rowH=62,gap=5,x=48,w=984;GOALS.forEach((g,i)=>{const m=metricForOutput(g,mi),ok=goalAchieved(g,m,mi),b=bonusForOutput(g,mi),yy=listY+i*(rowH+gap);ctx.fillStyle='rgba(255,255,255,.94)';rounded(ctx,x,yy,w,rowH,18);ctx.fill();ctx.fillStyle=ok?'#16855f':'#315eea';ctx.font='800 24px -apple-system,sans-serif';ctx.fillText(String(g.id).padStart(2,'0'),x+18,yy+38);ctx.fillStyle='#27344d';ctx.font='700 22px -apple-system,sans-serif';ctx.fillText(shortText(g.shortTitle||g.title,20),x+65,yy+38);ctx.textAlign='right';ctx.fillStyle=ok?'#16855f':'#52698e';ctx.font='800 21px -apple-system,sans-serif';const bonusTxt=b.total?` ★${b.done}/${b.total}`:'';ctx.fillText(shortText(`${m.text}${bonusTxt}`,22),x+w-18,yy+38);ctx.textAlign='left';});
+  const memo=state.monthMemos[mi]||state.snapshots?.[snapshotKey(mi)]?.memo;if(memo){ctx.fillStyle='rgba(23,32,57,.88)';rounded(ctx,60,1810,960,78,22);ctx.fill();ctx.fillStyle='#fff';ctx.font='700 24px -apple-system,sans-serif';wrapText(ctx,memo,92,1842,890,31,2);}ctx.textAlign='center';ctx.fillStyle='rgba(255,255,255,.85)';ctx.font='20px -apple-system,sans-serif';ctx.fillText(`${YEAR} GOALS · ${mi+1}月まで`,540,1908);ctx.textAlign='left';
 }
 function rounded(ctx,x,y,w,h,r){ctx.beginPath();ctx.roundRect(x,y,w,h,r);}
 function cover(ctx,img,x,y,w,h){const ir=img.width/img.height,br=w/h;let sw,sh,sx,sy;if(ir>br){sh=img.height;sw=sh*br;sx=(img.width-sw)/2;sy=0;}else{sw=img.width;sh=sw/br;sx=0;sy=(img.height-sh)/2;}ctx.drawImage(img,sx,sy,sw,sh,x,y,w,h);}
@@ -367,8 +482,8 @@ function wrapText(ctx,text,x,y,maxWidth,lineHeight,maxLines){let line='',lines=[
 function openSettings(){
   const standalone=window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone;
   const bs=backupStatusText(),legacy=!!getLegacyV2()&&!settings.legacyV2Migrated;
-  openSheet(`<div class="sheet-title"><div><h2>設定・データ</h2><span class="badge">v${APP_VERSION}</span></div><button class="sheet-close" data-close>×</button></div><div class="install-note">${standalone?'ホーム画面PWAとして起動中です。記録ログはこのPWAのIndexedDBに保存されています。':'本番利用は通常SafariでGitHub Pagesを開き、「共有 → ホーム画面に追加」してから始めてください。'}</div><div class="section-head"><div><h2>バックアップ</h2><p>JSONをiCloud Driveへ保存。30日で通知、60日で強めに通知。</p></div></div><div class="card"><div class="backup-meta"><b class="${bs.level==='good'?'status-good':bs.level==='warn'?'status-warn':'status-danger'}">${esc(bs.title)}</b><small>${esc(bs.detail)}</small></div><div class="actions"><button class="secondary" id="exportBtn">バックアップ保存</button><button class="secondary" id="restoreBtn">バックアップ復元</button></div></div><div class="section-head"><div><h2>アプリ更新</h2><p>GitHub Pages更新後もIndexedDBのデータは維持。</p></div></div><div class="card"><div class="backup-meta"><b>アプリ v${APP_VERSION} / DB v${DB_VERSION}</b><small>更新前はバックアップ推奨。新しいService Workerがあれば通知します。</small></div><button class="primary" id="checkUpdateBtn">更新を確認</button></div>${legacy?'<div class="section-head"><div><h2>v0.2移行</h2></div></div><div class="card"><button class="primary" id="migrateV2Btn">v0.2の追加ログをIndexedDBへ移行</button><p class="small-text">同じPWA内に残っている旧Local Storageの日次・イベント・月次メモを追加します。</p></div>':''}<div class="section-head"><div><h2>初期データ / リセット</h2></div></div><div class="card"><button class="primary" id="seedBtn">初期データJSONを読み直す</button><p class="small-text">個人用JSONはGitHubに置かず、iCloud Driveに保管してください。</p><button class="primary" style="background:#b84450" id="resetBtn">このiPhone内のデータを消去</button></div>`);
-  document.getElementById('exportBtn').onclick=()=>saveBackupFile();document.getElementById('restoreBtn').onclick=()=>document.getElementById('restoreFile').click();document.getElementById('checkUpdateBtn').onclick=checkForUpdate;document.getElementById('seedBtn').onclick=()=>document.getElementById('setupFile').click();if(document.getElementById('migrateV2Btn'))document.getElementById('migrateV2Btn').onclick=migrateLegacyV2;
+  openSheet(`<div class="sheet-title"><div><h2>設定・データ</h2><span class="badge">v${APP_VERSION}</span></div><button class="sheet-close" data-close>×</button></div><div class="install-note">${standalone?'ホーム画面PWAとして起動中です。記録ログはこのPWAのIndexedDBに保存されています。':'本番利用は通常SafariでGitHub Pagesを開き、「共有 → ホーム画面に追加」してから始めてください。'}</div><div class="section-head"><div><h2>バックアップ</h2><p>JSONをiCloud Driveへ保存。30日で通知、60日で強めに通知。</p></div></div><div class="card"><div class="backup-meta"><b class="${bs.level==='good'?'status-good':bs.level==='warn'?'status-warn':'status-danger'}">${esc(bs.title)}</b><small>${esc(bs.detail)}</small></div><div class="actions"><button class="secondary" id="exportBtn">バックアップ保存</button><button class="secondary" id="restoreBtn">バックアップ復元</button></div></div><div class="section-head"><div><h2>アプリ更新</h2><p>GitHub Pages更新後もIndexedDBのデータは維持。</p></div></div><div class="card"><div class="backup-meta"><b>アプリ v${APP_VERSION} / DB v${DB_VERSION}</b><small>更新前はバックアップ推奨。新しいService Workerがあれば通知します。</small></div><button class="primary" id="checkUpdateBtn">更新を確認</button></div>${legacy?'<div class="section-head"><div><h2>v0.2移行</h2></div></div><div class="card"><button class="primary" id="migrateV2Btn">v0.2の追加ログをIndexedDBへ移行</button><p class="small-text">同じPWA内に残っている旧Local Storageの日次・イベント・月次メモを追加します。</p></div>':''}<div class="section-head"><div><h2>個人設定の更新</h2><p>PRIVATEパッチなら日次・イベントログを残したまま目標設定を更新。</p></div></div><div class="card"><button class="primary blue" id="patchBtn">設定パッチJSONを読み込む</button></div><div class="section-head"><div><h2>初期データ / リセット</h2></div></div><div class="card"><button class="primary" id="seedBtn">初期データJSONを読み直す</button><p class="small-text">初期データの読み直しは現在データを置き換えます。通常のアップデートでは設定パッチを使ってください。</p><button class="primary" style="background:#b84450" id="resetBtn">このiPhone内のデータを消去</button></div>`);
+  document.getElementById('exportBtn').onclick=()=>saveBackupFile();document.getElementById('restoreBtn').onclick=()=>document.getElementById('restoreFile').click();document.getElementById('checkUpdateBtn').onclick=checkForUpdate;document.getElementById('patchBtn').onclick=()=>document.getElementById('patchFile').click();document.getElementById('seedBtn').onclick=()=>document.getElementById('setupFile').click();if(document.getElementById('migrateV2Btn'))document.getElementById('migrateV2Btn').onclick=migrateLegacyV2;
   document.getElementById('resetBtn').onclick=async()=>{if(confirm('このiPhone内の2026 GOALSデータをすべて消しますか？\nバックアップがない場合は元に戻せません。')){await wipeDatabase();settings.lastBackupAt=null;settings.lastBackupFile=null;saveSettings();closeSheet();document.getElementById('setupOverlay').classList.add('open');}};
 }
 function openSheet(html){document.getElementById('sheetContent').innerHTML=html;document.getElementById('sheetBackdrop').classList.add('open');document.querySelectorAll('[data-close]').forEach(b=>b.onclick=closeSheet);}
@@ -401,7 +516,8 @@ function bindUi(){
   document.getElementById('touchTodayBtn').onclick=async()=>{const d=isoLocal(nowForYear());state.lastTouched[d]=new Date().toISOString();await saveState('今日の記録を保存しました');renderAll();};
   document.getElementById('prevMonth').onclick=()=>{calCursor=new Date(calCursor.getFullYear(),calCursor.getMonth()-1,1);renderCalendar();};document.getElementById('nextMonth').onclick=()=>{calCursor=new Date(calCursor.getFullYear(),calCursor.getMonth()+1,1);renderCalendar();};
   document.getElementById('summaryMonth').onchange=renderMonthly;document.getElementById('prevSummaryMonth').onclick=()=>{const s=document.getElementById('summaryMonth');s.value=Math.max(0,+s.value-1);renderMonthly();};document.getElementById('nextSummaryMonth').onclick=()=>{const s=document.getElementById('summaryMonth');s.value=Math.min(11,+s.value+1);renderMonthly();};
-  document.getElementById('saveMemoBtn').onclick=async()=>{const mi=+document.getElementById('summaryMonth').value;state.monthMemos[mi]=document.getElementById('monthMemo').value;await saveState('月次メモを保存しました');renderStory();};
+  document.getElementById('saveMemoBtn').onclick=async()=>{const mi=+document.getElementById('summaryMonth').value;state.monthMemos[mi]=document.getElementById('monthMemo').value;await saveState('月次メモを保存しました');renderMonthly();};
+  document.getElementById('snapshotBtn').onclick=async()=>{const mi=+document.getElementById('summaryMonth').value;if(state.snapshots?.[snapshotKey(mi)]&&!confirm(`${mi+1}月の保存済み状態を現在値で更新しますか？`))return;await captureSnapshot(mi);};
   document.getElementById('copyMonthlyBtn').onclick=async()=>{const text=monthlyText();try{await navigator.clipboard.writeText(text);toast('月次テキストをコピーしました');}catch(e){prompt('コピーしてください',text);}};
   document.getElementById('refreshStoryBtn').onclick=renderStory;document.getElementById('storyPhoto').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{const img=new Image();img.onload=()=>{storyImage=img;renderStory();};img.src=r.result;};r.readAsDataURL(f);};
   document.getElementById('downloadStoryBtn').onclick=()=>{renderStory();const a=document.createElement('a');a.href=document.getElementById('storyCanvas').toDataURL('image/png');a.download=`2026-goals-${String(+document.getElementById('summaryMonth').value+1).padStart(2,'0')}.png`;a.click();};
@@ -409,6 +525,7 @@ function bindUi(){
   document.getElementById('setupImportBtn').onclick=()=>document.getElementById('setupFile').click();document.getElementById('setupRestoreBtn').onclick=()=>document.getElementById('restoreFile').click();
   document.getElementById('setupFile').onchange=async e=>{const f=e.target.files[0];if(f)await handleImportFile(f,{initial:!hasConfig()});e.target.value='';};
   document.getElementById('restoreFile').onchange=async e=>{const f=e.target.files[0];if(f)await handleImportFile(f,{initial:!hasConfig()});e.target.value='';};
+  document.getElementById('patchFile').onchange=async e=>{const f=e.target.files[0];if(f)await handleImportFile(f,{initial:false});e.target.value='';};
   document.getElementById('updateLaterBtn').onclick=hideUpdateBanner;document.getElementById('updateBackupBtn').onclick=backupThenUpdate;
 }
 

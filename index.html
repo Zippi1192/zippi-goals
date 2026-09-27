@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="2026 GOALS">
 <link rel="manifest" href="./manifest.webmanifest">
-<link rel="apple-touch-icon" href="./icons/icon-192.png">
+<link rel="apple-touch-icon" href="./icon-192.png">
 <title>2026 GOALS</title>
 <style>
 :root{
@@ -47,7 +47,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .bottom-nav{position:fixed;z-index:40;left:50%;transform:translateX(-50%);bottom:0;width:min(600px,100%);height:calc(var(--navh) + env(safe-area-inset-bottom));padding:8px 10px calc(8px + env(safe-area-inset-bottom));background:rgba(255,255,255,.94);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border-top:1px solid rgba(220,224,235,.85);display:grid;grid-template-columns:repeat(5,1fr);align-items:start}.nav-btn{border:0;background:transparent;color:#8992a5;font-size:9px;font-weight:700;padding:2px 1px}.nav-btn span{display:block;font-size:21px;line-height:28px}.nav-btn.active{color:var(--blue)}.nav-btn.add span{width:48px;height:48px;margin:-13px auto 0;border-radius:17px;background:var(--blue);color:#fff;display:grid;place-items:center;font-size:28px;box-shadow:0 9px 22px rgba(49,94,234,.28)}.nav-btn.add{color:var(--blue)}
 .sheet-backdrop{position:fixed;inset:0;background:rgba(17,25,45,.34);z-index:80;opacity:0;pointer-events:none;transition:.18s}.sheet-backdrop.open{opacity:1;pointer-events:auto}.sheet{position:absolute;left:50%;bottom:0;transform:translate(-50%,105%);width:min(600px,100%);max-height:88vh;background:#f7f8fc;border-radius:27px 27px 0 0;padding:10px 14px calc(20px + env(safe-area-inset-bottom));overflow:auto;transition:.22s ease}.sheet-backdrop.open .sheet{transform:translate(-50%,0)}.grab{width:42px;height:5px;background:#d7dbe4;border-radius:999px;margin:1px auto 12px}.sheet-title{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:2px 2px 12px}.sheet-title h2{font-size:19px;margin:0}.sheet-close{border:0;background:#e9ecf2;width:36px;height:36px;border-radius:12px;color:#657087}.sheet .card{box-shadow:none;margin-bottom:10px}.sheet .section-head{margin-top:12px}
 .toast{position:fixed;z-index:120;left:50%;bottom:calc(var(--navh) + 20px + env(safe-area-inset-bottom));transform:translate(-50%,15px);background:#172039;color:#fff;padding:10px 14px;border-radius:13px;font-size:12px;opacity:0;transition:.18s;pointer-events:none}.toast.show{opacity:1;transform:translate(-50%,0)}
-.story-wrap{background:#dde3ef;border-radius:20px;padding:8px;margin-top:10px}.story-wrap canvas{width:100%;height:auto;border-radius:16px;display:block;background:#456}.small-text{font-size:11px;line-height:1.6;color:var(--muted)}.badge{display:inline-block;padding:5px 8px;border-radius:999px;font-size:10px;font-weight:800;background:#eef2f7;color:#657087}.badge.good{background:#e7f6ef;color:var(--green)}
+.challenge-list{display:grid;gap:8px}.challenge-row{display:grid;grid-template-columns:44px 1fr auto;align-items:center;gap:9px;background:#fff;border:1px solid var(--line);border-radius:16px;padding:9px 10px}.challenge-row.done{background:#f0faf5;border-color:#d5eee2}.challenge-check{width:40px;height:40px;border:0;border-radius:13px;background:#eef2f7;color:#7b8497;font-weight:900;font-size:18px}.challenge-row.done .challenge-check{background:#dff4e9;color:var(--green)}.challenge-label{font-size:13px;font-weight:700}.challenge-row.done .challenge-label{text-decoration:line-through;color:#6d7b73}.bonus-mini{margin-top:5px;font-size:9px;font-weight:800;color:#9b6c20;background:#fff7e7;display:inline-block;padding:3px 6px;border-radius:999px}.output-preview{width:100%;min-height:300px;border:1px solid var(--line);border-radius:16px;background:#f8f9fc;color:var(--ink);padding:13px;font-size:12px;line-height:1.65;resize:vertical}.snapshot-line{font-size:11px;color:var(--muted);margin:9px 1px 0;line-height:1.5}.story-wrap{background:#dde3ef;border-radius:20px;padding:8px;margin-top:10px}.story-wrap canvas{width:100%;height:auto;border-radius:16px;display:block;background:#456}.small-text{font-size:11px;line-height:1.6;color:var(--muted)}.badge{display:inline-block;padding:5px 8px;border-radius:999px;font-size:10px;font-weight:800;background:#eef2f7;color:#657087}.badge.good{background:#e7f6ef;color:var(--green)}
 .install-note{background:#eef3ff;border:1px solid #dbe4ff;color:#3e5cad;border-radius:16px;padding:12px;font-size:11px;line-height:1.6}
 @media(min-width:560px){.day{aspect-ratio:1}.action-grid{grid-template-columns:repeat(4,1fr)}}
 
@@ -116,12 +116,16 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
         <div class="field"><textarea id="monthMemo" placeholder="例：ボドゲは好調。筋トレは来月戻す。"></textarea></div>
         <button class="primary" id="saveMemoBtn">メモを保存</button>
       </div>
-      <div class="section-head"><div><h2>OUTPUT</h2><p>テキストとStory画像を自動生成。</p></div></div>
+      <div class="section-head"><div><h2>OUTPUT</h2><p>「〇月まで」の20目標を、テキストとStory画像にまとめます。</p></div></div>
       <div class="card">
-        <div class="actions"><button class="secondary" id="copyMonthlyBtn">月次テキストをコピー</button><button class="secondary" id="refreshStoryBtn">Story更新</button></div>
-        <div class="field" style="margin-top:12px"><label>Story上部の写真（任意）</label><input id="storyPhoto" type="file" accept="image/*"></div>
+        <div class="actions"><button class="secondary" id="snapshotBtn">この月の状態を保存</button><button class="secondary" id="copyMonthlyBtn">テキストをコピー</button></div>
+        <div id="snapshotStatus" class="snapshot-line"></div>
+        <div class="field" style="margin-top:12px"><label>出力テキスト</label><textarea id="outputTextPreview" class="output-preview" readonly></textarea></div>
+        <div class="field"><label>Story上部の写真（任意）</label><input id="storyPhoto" type="file" accept="image/*"></div>
+        <div class="actions"><button class="secondary" id="refreshStoryBtn">画像を更新</button><button class="secondary" id="shareStoryBtn">画像を共有</button></div>
         <div class="story-wrap"><canvas id="storyCanvas" width="1080" height="1920"></canvas></div>
-        <div class="actions" style="margin-top:10px"><button class="secondary" id="shareStoryBtn">共有</button><button class="secondary" id="downloadStoryBtn">PNG保存</button></div>
+        <button class="primary" id="downloadStoryBtn">PNGを保存</button>
+        <p class="micro-note">月末に「この月の状態を保存」すると、あとで目標が進んでもその月の出力を再現できます。</p>
       </div>
     </section>
   </main>
@@ -139,6 +143,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 <div class="toast" id="toast"></div>
 <input id="setupFile" type="file" accept="application/json,.json" hidden>
 <input id="restoreFile" type="file" accept="application/json,.json" hidden>
+<input id="patchFile" type="file" accept="application/json,.json" hidden>
 
 <div class="update-banner" id="updateBanner" hidden>
   <div><b>新しいバージョンがあります</b><small id="updateVersionText">バックアップしてから更新できます。</small></div>
