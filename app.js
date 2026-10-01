@@ -1,7 +1,7 @@
 'use strict';
 
 const APP_ID='2026-goals';
-const APP_VERSION='0.3.2';
+const APP_VERSION='0.3.3';
 const BACKUP_VERSION=2;
 const DB_NAME='2026GoalsDB';
 const DB_VERSION=4;
@@ -365,6 +365,39 @@ async function captureSnapshot(mi){
   await saveState(`${mi+1}月の状態を保存しました`);renderMonthly();
 }
 function eventLabel(e){const t=EVENT_TYPES[e.type]||{label:'記録',emoji:'•'};let detail='';if(t.fields==='escape')detail=e.result==='success'?'成功':'失敗';else if(['score','minutes','weight'].includes(t.fields))detail=`${e.value}${t.valueUnit||''}`;else if(t.fields==='health')detail=({good:'健康',attention:'要注意',recovered:'回復'}[e.status]||'健康メモ');else if(e.complete)detail='完了';else if(Number.isFinite(+e.progress))detail=`${e.progress}%`;else detail=e.title||e.name||'';return {emoji:t.emoji||'•',label:t.label||'記録',detail};}
+// ---------- Rendering ----------
+function renderAll(){
+  if(!hasConfig())return;
+  renderHeader();
+  renderToday();
+  renderCalendar();
+  renderGoals();
+  renderMonthly();
+  renderBackupNotices();
+}
+function renderHeader(){
+  const d=nowForYear();
+  document.getElementById('headerSub').textContent=`${d.getMonth()+1}月${d.getDate()}日 · IndexedDB保存 · v${APP_VERSION}`;
+}
+function renderToday(){
+  const today=isoLocal(nowForYear()),d=dateFromIso(today);
+  selectedDate=selectedDate||today;
+  document.getElementById('todayDateLabel').textContent=new Intl.DateTimeFormat('ja-JP',{year:'numeric',month:'long',day:'numeric',weekday:'long'}).format(d);
+  document.getElementById('todayGreeting').textContent='TODAY';
+  document.getElementById('yearDays').textContent=`今年 ${dayOfYear(d)} / ${daysInYear(YEAR)}日`;
+  let yes=0;
+  const entries=Object.entries(DAILY);
+  document.getElementById('todayDaily').innerHTML=entries.map(([key,x])=>{
+    const st=dailyState(today,key);
+    if(st==='yes')yes++;
+    return dailyRowHtml(today,key,x,st);
+  }).join('');
+  document.getElementById('todayDone').textContent=`今日 ○ ${yes}/${entries.length}`;
+  document.querySelectorAll('#todayDaily .state-toggle').forEach(b=>b.onclick=()=>cycleDaily(today,b.dataset.key));
+  renderWeek();
+  renderQuick();
+  renderTodayEvents();
+}
 function dailyRowHtml(date,key,x,st){const label=st==='yes'?'○':st==='no'?'×':'未';return `<div class="daily-row"><div class="emoji">${x.emoji||'✓'}</div><div><b>${esc(x.label||key)}</b><small>${st==='yes'?'記録済み':st==='no'?'やってない':'まだ未記録'}</small></div><button class="state-toggle ${st||''}" data-key="${esc(key)}" data-date="${date}">${label}</button></div>`;}
 function renderWeek(){
   const now=nowForYear(),dow=now.getDay(),diff=dow===0?-6:1-dow,start=new Date(now);start.setDate(now.getDate()+diff);start.setHours(12,0,0,0);

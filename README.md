@@ -1,8 +1,8 @@
-# 2026 GOALS PWA v0.3.2
+# 2026 GOALS PWA v0.3.3
 
 個人データをiPhone内のIndexedDBに保存するローカルファーストPWAです。GitHub Pagesにはこの公開用ファイル一式だけを置き、PRIVATEの初期データ / バックアップJSONはアップロードしません。
 
-## v0.3.2 の主な機能
+## v0.3.3 の主な機能
 - TODAYの日次チェック
 - CALENDARから過去日を修正
 - 映画 / ゲーム / 脱出 / 友達等のイベントログ
@@ -20,3 +20,7 @@
 
 ## PRIVATE JSON
 初期データ / 移行データ / バックアップJSONはGitHubに置かず、iPhoneまたはiCloud Driveだけに保存してください。
+
+
+## v0.3.3 hotfix
+初期データ読込後の描画エラーを修正。DB v4は変更していないため、既存データの再入力は不要です。
