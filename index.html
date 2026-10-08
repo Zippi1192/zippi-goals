@@ -49,6 +49,17 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .toast{position:fixed;z-index:120;left:50%;bottom:calc(var(--navh) + 20px + env(safe-area-inset-bottom));transform:translate(-50%,15px);background:#172039;color:#fff;padding:10px 14px;border-radius:13px;font-size:12px;opacity:0;transition:.18s;pointer-events:none}.toast.show{opacity:1;transform:translate(-50%,0)}
 .challenge-list{display:grid;gap:8px}.challenge-row{display:grid;grid-template-columns:44px 1fr auto;align-items:center;gap:9px;background:#fff;border:1px solid var(--line);border-radius:16px;padding:9px 10px}.challenge-row.done{background:#f0faf5;border-color:#d5eee2}.challenge-check{width:40px;height:40px;border:0;border-radius:13px;background:#eef2f7;color:#7b8497;font-weight:900;font-size:18px}.challenge-row.done .challenge-check{background:#dff4e9;color:var(--green)}.challenge-label{font-size:13px;font-weight:700}.challenge-row.done .challenge-label{text-decoration:line-through;color:#6d7b73}.bonus-mini{margin-top:5px;font-size:9px;font-weight:800;color:#9b6c20;background:#fff7e7;display:inline-block;padding:3px 6px;border-radius:999px}.output-preview{width:100%;min-height:300px;border:1px solid var(--line);border-radius:16px;background:#f8f9fc;color:var(--ink);padding:13px;font-size:12px;line-height:1.65;resize:vertical}.snapshot-line{font-size:11px;color:var(--muted);margin:9px 1px 0;line-height:1.5}.story-wrap{background:#dde3ef;border-radius:20px;padding:8px;margin-top:10px}.story-wrap canvas{width:100%;height:auto;border-radius:16px;display:block;background:#456}.small-text{font-size:11px;line-height:1.6;color:var(--muted)}.badge{display:inline-block;padding:5px 8px;border-radius:999px;font-size:10px;font-weight:800;background:#eef2f7;color:#657087}.badge.good{background:#e7f6ef;color:var(--green)}
 .install-note{background:#eef3ff;border:1px solid #dbe4ff;color:#3e5cad;border-radius:16px;padding:12px;font-size:11px;line-height:1.6}
+/* v0.4 UX */
+.auto-save-note{display:flex;align-items:center;gap:7px;margin:9px 4px 0;color:var(--green);font-size:11px;font-weight:700}.auto-save-note:before{content:'✓';width:18px;height:18px;border-radius:50%;background:#e6f7ef;display:grid;place-items:center}
+.goal-groups{display:grid;gap:18px}.goal-group-title{display:flex;align-items:center;justify-content:space-between;margin:3px 3px 8px}.goal-group-title h3{font-size:15px;margin:0}.goal-group-title span{font-size:10px;color:var(--muted);background:#eef2f7;border-radius:999px;padding:5px 8px}
+.goal-card.done-card{background:#f7fbf9;border-color:#dbeee5}.goal-card.near-card{border-color:#f0d8a6;background:#fffaf0}.goal-card.steady-card{background:#fff}
+.focus-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.focus-card{border:1px solid var(--line);background:#fff;border-radius:17px;padding:12px;text-align:left;color:var(--ink);min-width:0}.focus-card span{font-size:22px;display:block;margin-bottom:7px}.focus-card b{font-size:12px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.focus-card small{display:block;color:var(--muted);font-size:9px;margin-top:4px}
+.progress-card{border:1px solid var(--line);text-align:left;color:var(--ink);width:100%}.progress-card.near{background:#fffaf0;border-color:#f0d8a6}.progress-remain{font-size:10px;color:var(--amber);font-weight:800;margin-top:4px}
+.cal-title-wrap{display:flex;align-items:center;gap:7px}.today-chip{border:0;border-radius:999px;background:var(--soft);color:var(--blue);font-weight:800;font-size:10px;padding:7px 9px}.calendar-month-summary{margin-top:10px}.calendar-month-summary .legacy-month{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:8px}.legacy-box{background:#fff;border:1px solid var(--line);border-radius:14px;padding:9px;text-align:center}.legacy-box b{display:block;font-size:14px}.legacy-box small{font-size:9px;color:var(--muted)}
+.list-open-btn{margin-top:10px;width:100%;border:0;background:#eef3ff;color:#315eea;border-radius:13px;padding:11px;font-weight:800;font-size:11px}.history-list{display:grid;gap:7px}.history-item{display:flex;align-items:flex-start;gap:9px;border:1px solid var(--line);border-radius:14px;background:#fff;padding:10px}.history-index{width:26px;height:26px;border-radius:9px;background:#eef2f7;display:grid;place-items:center;font-size:9px;color:var(--muted);font-weight:800;flex:0 0 auto}.history-main{min-width:0;flex:1}.history-main b{display:block;font-size:12px;line-height:1.4}.history-main small{display:block;color:var(--muted);font-size:9px;margin-top:3px}.history-search{position:sticky;top:0;background:#fff;padding:2px 0 10px;z-index:2}.history-search input{width:100%;border:1px solid var(--line);border-radius:13px;padding:11px;background:#f8f9fc}
+.story-mode{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0 12px}.story-mode button{border:1px solid var(--line);border-radius:14px;padding:11px;background:#f5f7fb;color:#667189;font-weight:800}.story-mode button.active{background:#eef3ff;border-color:#bfd0ff;color:var(--blue)}
+.report-steps{display:grid;gap:8px;margin:11px 0}.report-step{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:15px;padding:10px;background:#fff}.report-step .num{width:28px;height:28px;border-radius:9px;background:var(--soft);color:var(--blue);display:grid;place-items:center;font-weight:900;font-size:11px}.report-step b{font-size:12px}.report-step small{display:block;color:var(--muted);font-size:9px;margin-top:2px}.publish-btn{background:#eef8f3;color:var(--green);border:1px solid #cfe8da}
+details.maintenance{margin-top:10px;border-top:1px solid var(--line);padding-top:8px}details.maintenance summary{cursor:pointer;color:var(--muted);font-size:11px;font-weight:800;padding:8px 0}
 @media(min-width:560px){.day{aspect-ratio:1}.action-grid{grid-template-columns:repeat(4,1fr)}}
 
 .backup-notice{margin:10px 0 0;border-radius:17px;padding:12px 13px;border:1px solid #f0dfb6;background:#fff8e8;color:#795516;font-size:11px;line-height:1.55;display:flex;align-items:center;gap:10px}.backup-notice.urgent{background:#fff0f1;border-color:#f0c7cc;color:#a33a46}.backup-notice b{display:block;font-size:12px}.backup-notice button{margin-left:auto;flex:0 0 auto;border:0;border-radius:12px;padding:9px 10px;background:#fff;color:inherit;font-weight:800}.setup-overlay{position:fixed;inset:0;z-index:200;background:linear-gradient(145deg,#edf2ff,#f7f8fc 55%,#f3efff);display:none;align-items:center;justify-content:center;padding:24px}.setup-overlay.open{display:flex}.setup-card{width:min(430px,100%);background:#fff;border:1px solid var(--line);border-radius:28px;padding:24px;box-shadow:0 24px 60px rgba(31,47,88,.15);text-align:center}.setup-card h2{margin:12px 0 8px;font-size:28px}.setup-card p{color:var(--muted);font-size:12px;line-height:1.7;margin:0 0 18px}.setup-card .primary{margin-top:9px}.setup-mark{width:66px;height:66px;border-radius:22px;background:linear-gradient(145deg,#315eea,#755ce9);display:grid;place-items:center;margin:auto;color:white;font-size:22px;font-weight:900;box-shadow:0 12px 28px rgba(49,94,234,.22)}.update-banner{position:fixed;left:12px;right:12px;top:calc(env(safe-area-inset-top) + 10px);z-index:180;max-width:620px;margin:auto;background:#172039;color:#fff;border-radius:18px;padding:12px;box-shadow:0 14px 40px rgba(15,23,45,.28);display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center}.update-banner[hidden]{display:none}.update-banner div{grid-column:1/-1}.update-banner b{display:block;font-size:13px}.update-banner small{display:block;color:#c8d0df;font-size:10px;margin-top:2px}.update-banner button{border:0;border-radius:12px;padding:10px 11px;font-size:11px;font-weight:800;background:#2a344c;color:#fff}.update-banner .update-primary{background:#5d7df0}.backup-meta{display:grid;gap:6px;margin-bottom:10px}.backup-meta b{font-size:13px}.backup-meta small{font-size:10px;color:var(--muted)}.status-good{color:var(--green)}.status-warn{color:var(--amber)}.status-danger{color:var(--red)}
@@ -73,14 +84,16 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 
       <div class="section-head"><div><h2>今日のチェック</h2><p>タップで「未記録 → ○ → ×」。あとから変更OK。</p></div></div>
       <div id="todayDaily" class="daily-list"></div>
-      <button class="primary blue" id="touchTodayBtn">今日の記録を保存</button>
-      <p class="micro-note">未チェックは未記録のまま保存されます</p>
+      <div class="auto-save-note">タップした瞬間に自動保存。あとからカレンダーで修正できます。</div>
 
       <div class="section-head"><div><h2>今週あとどれくらい？</h2><p>週4を目安に、自動集計。</p></div></div>
       <div id="weekProgress" class="week-grid"></div>
 
-      <div class="section-head"><div><h2>2026 PROGRESS</h2><p>イベント記録から勝手に増える項目。</p></div><button class="link-btn" data-go="goals">全部見る</button></div>
+      <div class="section-head"><div><h2>🔥 今年あと少し</h2><p>ゴールが近いものを自動で優先表示。</p></div><button class="link-btn" data-go="goals">全部見る</button></div>
       <div id="quickProgress" class="quick-progress"></div>
+
+      <div class="section-head"><div><h2>🌱 動かしたい</h2><p>止まりがちな挑戦を、今日の候補に。</p></div></div>
+      <div id="focusGoals" class="focus-grid"></div>
 
       <div class="section-head"><div><h2>今日のイベント</h2><p>映画、ゲーム、友達、脱出など。</p></div><button class="link-btn" id="todayAddBtn">＋ 追加</button></div>
       <div id="todayEvents" class="event-list"></div>
@@ -89,10 +102,11 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
     <section id="calendarView" class="view">
       <div class="section-head"><div><h2>CALENDAR</h2><p>日付を選んで、過去の記録を追記・修正。</p></div></div>
       <div class="card calendar-card">
-        <div class="cal-head"><button class="cal-nav" id="prevMonth">‹</button><h2 id="calTitle"></h2><button class="cal-nav" id="nextMonth">›</button></div>
+        <div class="cal-head"><button class="cal-nav" id="prevMonth">‹</button><div class="cal-title-wrap"><h2 id="calTitle"></h2><button class="today-chip" id="thisMonthBtn">今月</button></div><button class="cal-nav" id="nextMonth">›</button></div>
         <div class="weekdays"><div>日</div><div>月</div><div>火</div><div>水</div><div>木</div><div>金</div><div>土</div></div>
         <div id="calendarGrid" class="cal-grid"></div>
       </div>
+      <div id="calendarMonthSummary" class="calendar-month-summary"></div>
       <div class="install-note" style="margin-top:12px">日付の下の小さい点は、左から 💪 / 👀 / 🛏 の記録。青い点はイベントありです。</div>
     </section>
 
@@ -116,16 +130,23 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
         <div class="field"><textarea id="monthMemo" placeholder="例：ボドゲは好調。筋トレは来月戻す。"></textarea></div>
         <button class="primary" id="saveMemoBtn">メモを保存</button>
       </div>
-      <div class="section-head"><div><h2>OUTPUT</h2><p>「〇月まで」の20目標を、テキストとStory画像にまとめます。</p></div></div>
+      <div class="section-head"><div><h2>月末レポート</h2><p>記録を確定 → コピー / Story共有 → 公表済みまで一続き。</p></div></div>
       <div class="card">
-        <div class="actions"><button class="secondary" id="snapshotBtn">この月の状態を保存</button><button class="secondary" id="copyMonthlyBtn">テキストをコピー</button></div>
+        <div class="report-steps">
+          <div class="report-step"><div class="num">1</div><div><b>月末の状態を確定</b><small>あとから同じ月のレポートを再現できます</small></div></div>
+          <div class="report-step"><div class="num">2</div><div><b>テキスト / Storyを共有</b><small>フル版とSNSハイライト版を選べます</small></div></div>
+          <div class="report-step"><div class="num">3</div><div><b>公表済みにする</b><small>⑳「毎月進捗を公表する」に自動反映</small></div></div>
+        </div>
+        <div class="actions"><button class="secondary" id="snapshotBtn">この月末の進捗を確定保存</button><button class="secondary" id="copyMonthlyBtn">テキストをコピー</button></div>
         <div id="snapshotStatus" class="snapshot-line"></div>
         <div class="field" style="margin-top:12px"><label>出力テキスト</label><textarea id="outputTextPreview" class="output-preview" readonly></textarea></div>
+        <div class="actions"><button class="secondary" id="openTextBtn">全文を見る</button><button class="secondary publish-btn" id="markPublishedBtn">📣 公表済みにする</button></div>
+        <div class="field" style="margin-top:14px"><label>Storyの種類</label><div class="story-mode"><button class="active" data-story-mode="highlight">SNSハイライト版</button><button data-story-mode="full">20目標フル版</button></div></div>
         <div class="field"><label>Story上部の写真（任意）</label><input id="storyPhoto" type="file" accept="image/*"></div>
-        <div class="actions"><button class="secondary" id="refreshStoryBtn">画像を更新</button><button class="secondary" id="shareStoryBtn">画像を共有</button></div>
+        <div class="actions"><button class="secondary" id="refreshStoryBtn">画像を更新</button><button class="secondary" id="shareStoryBtn">Storyで共有</button></div>
         <div class="story-wrap"><canvas id="storyCanvas" width="1080" height="1920"></canvas></div>
         <button class="primary" id="downloadStoryBtn">PNGを保存</button>
-        <p class="micro-note">月末に「この月の状態を保存」すると、あとで目標が進んでもその月の出力を再現できます。</p>
+        <p class="micro-note">確定保存すると、あとで目標が進んでもその月の出力を再現できます。</p>
       </div>
     </section>
   </main>

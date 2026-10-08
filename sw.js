@@ -1,4 +1,4 @@
-const APP_VERSION='0.3.3';
+const APP_VERSION='0.4.0';
 const CACHE=`2026-goals-${APP_VERSION}`;
 const ASSETS=['./','./index.html','./app.js','./manifest.webmanifest','./icon-192.png','./icon-512.png'];
 
