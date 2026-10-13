@@ -1,7 +1,7 @@
 'use strict';
 
 const APP_ID='2026-goals';
-const APP_VERSION='0.4.0';
+const APP_VERSION='0.4.1';
 const BACKUP_VERSION=2;
 const DB_NAME='2026GoalsDB';
 const DB_VERSION=4;
@@ -289,8 +289,9 @@ function eventsOn(date){return state.events.filter(e=>e.date===date).sort((a,b)=
 function dailyState(date,key){return state.daily[date]?.[key]||null;}
 async function setDaily(date,key,val){state.daily[date]=state.daily[date]||{};if(val)state.daily[date][key]=val;else delete state.daily[date][key];state.lastTouched[date]=new Date().toISOString();await saveState();renderAll();}
 function cycleDaily(date,key){const cur=dailyState(date,key),next=cur===null?'yes':cur==='yes'?'no':null;setDaily(date,key,next);}
-function legacyMonthTotal(key,throughMonth=11){const legacy=DAILY[key]?.legacy||[];let success=0,total=0;for(let i=0;i<=throughMonth;i++){if(Number.isFinite(+legacy[i])){success+=+legacy[i];total+=MONTH_DAYS[i];}}return {success,total};}
-function firstLogMonth(key){const legacy=DAILY[key]?.legacy||[];let i=0;while(i<12&&Number.isFinite(+legacy[i]))i++;return i;}
+function hasLegacyMonthValue(value){return value!==null&&value!==undefined&&value!==''&&Number.isFinite(Number(value));}
+function legacyMonthTotal(key,throughMonth=11){const legacy=DAILY[key]?.legacy||[];let success=0,total=0;for(let i=0;i<=throughMonth;i++){if(hasLegacyMonthValue(legacy[i])){success+=Number(legacy[i]);total+=MONTH_DAYS[i];}}return {success,total};}
+function firstLogMonth(key){const legacy=DAILY[key]?.legacy||[];let i=0;while(i<12&&hasLegacyMonthValue(legacy[i]))i++;return i;}
 function habitResumeDate(key){
   const raw=DAILY[key]?.resumeFrom;
   if(!raw)return null;
@@ -312,7 +313,7 @@ function habitCounts(key,throughDate=isoLocal(nowForYear())){
 }
 function monthHabitAggregate(key,mi){
   const legacy=DAILY[key]?.legacy||[];
-  if(Number.isFinite(+legacy[mi])){const success=+legacy[mi],total=MONTH_DAYS[mi];return {success,total,rate:success/total*100,source:'legacy'};}
+  if(hasLegacyMonthValue(legacy[mi])){const success=Number(legacy[mi]),total=MONTH_DAYS[mi];return {success,total,rate:success/total*100,source:'legacy'};}
   const now=nowForYear();
   let monthStart=new Date(YEAR,mi,1,12),monthEnd=new Date(YEAR,mi,MONTH_DAYS[mi],12);
   if(mi>now.getMonth())return {success:0,total:0,rate:0,source:'daily'};
@@ -390,7 +391,7 @@ function openHistoryList(goalId){
 }
 function focusGoalIds(){const preferred=[15,17,10,5];return preferred.map(goalById).filter(Boolean).filter(g=>!goalAchieved(g)).slice(0,3);}
 function recentQuickTypes(){const seen=[];state.events.slice().sort((a,b)=>(b.date+(b.createdAt||'')).localeCompare(a.date+(a.createdAt||''))).forEach(e=>{if(EVENT_TYPES[e.type]&&!seen.includes(e.type))seen.push(e.type);});for(const k of QUICK_TYPES)if(EVENT_TYPES[k]&&!seen.includes(k))seen.push(k);return seen.slice(0,6);}
-function renderCalendarMonthSummary(){const el=document.getElementById('calendarMonthSummary');if(!el)return;const mi=calCursor.getMonth();const legacyRows=Object.entries(DAILY).map(([key,x])=>{const a=monthHabitAggregate(key,mi);return {key,x,a};}).filter(r=>r.a.source==='legacy');if(!legacyRows.length){el.innerHTML='';return;}el.innerHTML=`<div class="install-note"><div><b>${mi+1}月は月次集計で記録済み</b><br>日別ログは復元せず、確定した合計値を正として保持しています。</div></div><div class="legacy-month">${legacyRows.map(({x,a})=>`<div class="legacy-box"><b>${x.emoji||'✓'} ${a.success}/${a.total}</b><small>${Math.round(a.rate)}%</small></div>`).join('')}</div>`;}
+function renderCalendarMonthSummary(){const el=document.getElementById('calendarMonthSummary');if(!el)return;const mi=calCursor.getMonth(),now=nowForYear();const rows=Object.entries(DAILY).map(([key,x])=>({key,x,a:monthHabitAggregate(key,mi)}));const allLegacy=rows.length&&rows.every(r=>r.a.source==='legacy');const anyData=rows.some(r=>r.a.total>0);if(!anyData){el.innerHTML='';return;}let title,detail;if(allLegacy){title=`${mi+1}月は月次集計で記録済み`;detail='日別ログは復元せず、確定した合計値を正として保持しています。';}else if(mi===now.getMonth()){title=`${mi+1}月は日別ログから集計中`;detail='今日までに入力した日別記録をリアルタイム集計しています。';}else{title=`${mi+1}月は日別ログから集計`;detail='保存された日別記録から集計しています。';}el.innerHTML=`<div class="install-note"><div><b>${title}</b><br>${detail}</div></div><div class="legacy-month">${rows.map(({x,a})=>`<div class="legacy-box"><b>${x.emoji||'✓'} ${a.success}/${a.total}</b><small>${Math.round(a.rate)}%</small></div>`).join('')}</div>`;}
 function goalGroups(){const rows=GOALS.map(g=>({g,m:goalMetric(g)}));const done=rows.filter(x=>goalAchieved(x.g,x.m));const active=rows.filter(x=>!goalAchieved(x.g,x.m));const near=active.filter(x=>x.m.pct>=60).sort((a,b)=>b.m.pct-a.m.pct);const nearIds=new Set(near.map(x=>x.g.id));const steady=active.filter(x=>!nearIds.has(x.g.id));return {near,steady,done};}
 
 // ---------- Rendering ----------
@@ -451,7 +452,7 @@ function renderCalendar(){
 }
 function openDateSheet(date){
   const future=dateFromIso(date)>nowForYear(),mi=dateFromIso(date).getMonth();const daily=Object.entries(DAILY).map(([key,x])=>dailyRowHtml(date,key,x,dailyState(date,key))).join(''),es=eventsOn(date);
-  const legacyNote=Object.values(DAILY).some(x=>Number.isFinite(+x.legacy?.[mi]))?'<div class="install-note">この月の習慣率は旧メモの月間集計値を基準にしています。ここで日次ログを追記しても、その月の既存集計値は二重計上防止のため変更しません。</div>':'';
+  const legacyNote=Object.values(DAILY).some(x=>hasLegacyMonthValue(x.legacy?.[mi]))?'<div class="install-note">この月の習慣率は旧メモの月間集計値を基準にしています。ここで日次ログを追記しても、その月の既存集計値は二重計上防止のため変更しません。</div>':'';
   const html=`<div class="sheet-title"><div><h2>${fmtDate(date)}</h2><span class="badge ${state.lastTouched[date]?'good':''}">${state.lastTouched[date]?'記録済み':'未確定'}</span></div><button class="sheet-close" data-close>×</button></div>${future?'<div class="install-note">未来の日付です。予定ログは追加できますが、日次チェックは通常は当日に記録してください。</div>':''}${legacyNote}<div class="section-head"><div><h2>DAILY</h2><p>未記録・○・×を個別に変更できます。</p></div></div><div class="daily-list" id="sheetDaily">${daily}</div><div class="auto-save-note">変更はその場で自動保存されます。</div><div class="section-head"><div><h2>EVENT</h2><p>この日に起きたこと。</p></div><button class="link-btn" id="addToDate">＋追加</button></div><div id="sheetEvents" class="event-list">${es.length?es.map(eventRowHtml).join(''):'<div class="card empty">イベントなし</div>'}</div>`;
   openSheet(html);document.querySelectorAll('#sheetDaily .state-toggle').forEach(b=>b.onclick=async()=>{const cur=dailyState(date,b.dataset.key),next=cur===null?'yes':cur==='yes'?'no':null;state.daily[date]=state.daily[date]||{};if(next)state.daily[date][b.dataset.key]=next;else delete state.daily[date][b.dataset.key];state.lastTouched[date]=new Date().toISOString();await saveState();renderAll();openDateSheet(date);});
   document.getElementById('addToDate').onclick=()=>openAddChooser(date);bindEventEdit('#sheetEvents');
@@ -572,17 +573,19 @@ function toast(s){const e=document.getElementById('toast');e.textContent=s;e.cla
 function switchView(v){if(!hasConfig())return;document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));document.getElementById(`${v}View`).classList.add('active');document.querySelectorAll('.nav-btn[data-view]').forEach(x=>x.classList.toggle('active',x.dataset.view===v));settings.lastView=v;saveSettings();if(v==='calendar')renderCalendar();if(v==='monthly')renderMonthly();window.scrollTo({top:0,behavior:'smooth'});}
 
 // ---------- Service Worker updates ----------
-function showUpdateBanner(worker){waitingWorker=worker||waitingWorker;const b=document.getElementById('updateBanner');b.hidden=false;document.getElementById('updateVersionText').textContent='個人データはiPhone内に残ります。念のためバックアップ後の更新がおすすめです。';}
+function showUpdateBanner(worker,version=null){waitingWorker=worker||waitingWorker;const b=document.getElementById('updateBanner');b.hidden=false;document.getElementById('updateVersionText').textContent=version?`v${APP_VERSION} → v${version}。個人データはiPhone内に残ります。念のためバックアップ後の更新がおすすめです。`:'個人データはiPhone内に残ります。念のためバックアップ後の更新がおすすめです。';}
 function hideUpdateBanner(){document.getElementById('updateBanner').hidden=true;}
+function workerVersion(worker){return new Promise(resolve=>{if(!worker){resolve(null);return;}const ch=new MessageChannel(),timer=setTimeout(()=>resolve(null),700);ch.port1.onmessage=e=>{clearTimeout(timer);resolve(e.data?.version||null);};try{worker.postMessage({type:'GET_VERSION'},[ch.port2]);}catch(e){clearTimeout(timer);resolve(null);}});}
+async function maybeShowUpdateBanner(worker){const version=await workerVersion(worker);if(version&&version!==APP_VERSION){showUpdateBanner(worker,version);return true;}if(version===APP_VERSION)hideUpdateBanner();return false;}
 function applyWaitingUpdate(){if(waitingWorker)waitingWorker.postMessage({type:'SKIP_WAITING'});else if(swRegistration?.waiting)swRegistration.waiting.postMessage({type:'SKIP_WAITING'});}
 async function backupThenUpdate(){const ok=await saveBackupFile({forUpdate:true});if(ok)applyWaitingUpdate();}
-async function checkForUpdate(){if(!swRegistration){toast('Service Worker未起動です');return;}try{toast('更新を確認中…');await swRegistration.update();if(swRegistration.waiting){showUpdateBanner(swRegistration.waiting);closeSheet();}else toast('更新確認が完了しました');}catch(e){console.error(e);toast('更新確認に失敗しました');}}
+async function checkForUpdate(){if(!swRegistration){toast('Service Worker未起動です');return;}try{toast('更新を確認中…');await swRegistration.update();if(swRegistration.waiting){const shown=await maybeShowUpdateBanner(swRegistration.waiting);if(shown)closeSheet();else toast('更新確認が完了しました');}else toast('更新確認が完了しました');}catch(e){console.error(e);toast('更新確認に失敗しました');}}
 async function setupServiceWorker(){
   if(!('serviceWorker' in navigator)||!location.protocol.startsWith('http'))return;
   try{
     swRegistration=await navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'});
-    if(swRegistration.waiting)showUpdateBanner(swRegistration.waiting);
-    swRegistration.addEventListener('updatefound',()=>{const w=swRegistration.installing;if(!w)return;w.addEventListener('statechange',()=>{if(w.state==='installed'&&navigator.serviceWorker.controller)showUpdateBanner(w);});});
+    if(swRegistration.waiting)await maybeShowUpdateBanner(swRegistration.waiting);
+    swRegistration.addEventListener('updatefound',()=>{const w=swRegistration.installing;if(!w)return;w.addEventListener('statechange',()=>{if(w.state==='installed'&&navigator.serviceWorker.controller)maybeShowUpdateBanner(w);});});
     navigator.serviceWorker.addEventListener('controllerchange',()=>{if(controllerReloading)return;controllerReloading=true;location.reload();});
     document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')swRegistration.update().catch(()=>{});});
   }catch(e){console.error('SW',e);}

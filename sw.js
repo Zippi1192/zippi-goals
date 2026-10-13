@@ -1,4 +1,4 @@
-const APP_VERSION='0.4.0';
+const APP_VERSION='0.4.1';
 const CACHE=`2026-goals-${APP_VERSION}`;
 const ASSETS=['./','./index.html','./app.js','./manifest.webmanifest','./icon-192.png','./icon-512.png'];
 
@@ -15,6 +15,7 @@ self.addEventListener('activate',event=>{
 });
 
 self.addEventListener('message',event=>{
+  if(event.data?.type==='GET_VERSION'){event.ports?.[0]?.postMessage({version:APP_VERSION});return;}
   if(event.data?.type==='SKIP_WAITING')self.skipWaiting();
 });
 
