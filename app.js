@@ -1,7 +1,7 @@
 'use strict';
 
 const APP_ID='2026-goals';
-const APP_VERSION='0.4.1';
+const APP_VERSION='0.4.2';
 const BACKUP_VERSION=2;
 const DB_NAME='2026GoalsDB';
 const DB_VERSION=4;
@@ -357,15 +357,76 @@ function goalAchieved(g,m=goalMetric(g),mi=null){
   }
   return m.pct>=100;
 }
+// MONTHLY: one cutoff for metrics, checklists, text, Story and snapshots.
+// The imported 2026 seed contains authoritative cumulative bases through September 30.
+// Months before that baseline can only be reconstructed from the preserved historical snapshots.
+const SNAPSHOT_FORMAT=2;
+function monthEndIso(mi){return `${YEAR}-${String(mi+1).padStart(2,'0')}-${String(MONTH_DAYS[mi]).padStart(2,'0')}`;}
+function monthCutoffIso(mi){const today=isoLocal(nowForYear());return today<monthEndIso(mi)?today:monthEndIso(mi);}
+function historicalBaselineIso(){return state.meta?.initialBaselineThrough||state.meta?.habitBaselineThrough||`${YEAR}-09-30`;}
+function baselineMonthIndex(){const m=Number(historicalBaselineIso().slice(5,7));return Number.isInteger(m)&&m>=1&&m<=12?m-1:8;}
 function snapshotKey(mi){return `${YEAR}-${String(mi+1).padStart(2,'0')}`;}
-function metricForOutput(g,mi){const snap=state.snapshots?.[snapshotKey(mi)];return snap?.metrics?.[g.id]||goalMetric(g);}
-function bonusForOutput(g,mi){const snap=state.snapshots?.[snapshotKey(mi)];if(snap?.bonus?.[g.id])return snap.bonus[g.id];const b=challengeSummary(g.id,'bonus');return {done:b.done,total:b.total,items:b.items.map(x=>({label:x.label,done:!!x.done}))};}
-function outputAchievedCount(mi){return GOALS.filter(g=>goalAchieved(g,metricForOutput(g,mi),mi)).length;}
+function snapshotIsVerified(mi,snap){return !!(snap?.metrics&&snap.cutoffFormat===SNAPSHOT_FORMAT&&snap.cutoffDate===monthEndIso(mi));}
+function snapshotForOutput(mi){
+  const snap=state.snapshots?.[snapshotKey(mi)];
+  // Historical imported snapshots are the only source for months before the baseline.
+  if(mi<baselineMonthIndex())return snap?.metrics?snap:null;
+  // A previous v0.4.1 snapshot may include entries from subsequent months: never use it.
+  // In-progress months always use the current date-limited live calculation.
+  return monthEndIso(mi)<=isoLocal(nowForYear())&&snapshotIsVerified(mi,snap)?snap:null;
+}
+function cutoffEvents(id,cutoff){return eventsForGoal(id).filter(e=>typeof e.date==='string'&&e.date.slice(0,10)<=cutoff);}
+function challengeStateAt(c,cutoff){
+  if(c.createdAt&&c.createdAt.slice(0,10)>cutoff)return null;
+  const log=(c.history||[]).slice().sort((a,b)=>String(a.at).localeCompare(String(b.at)));
+  const past=log.filter(h=>String(h.at).slice(0,10)<=cutoff);
+  if(past.length)return !!past[past.length-1].after;
+  if(log.length)return !!log[0].before;
+  return !!(c.done&&c.completedAt&&String(c.completedAt).slice(0,10)<=cutoff);
+}
+function challengeSummaryAt(id,category,cutoff){
+  const items=challengesForGoal(id,category).map(c=>({label:c.label,done:challengeStateAt(c,cutoff)})).filter(c=>c.done!==null);
+  return {items,done:items.filter(x=>x.done).length,total:items.length};
+}
+function goalMetricAt(g,cutoff){
+  const events=cutoffEvents(g.id,cutoff);
+  if(g.kind==='count'){const current=(g.base||0)+events.filter(e=>e.counted!==false).length;return {current,target:g.target,pct:g.target?clamp(current/g.target*100):0,text:`${current}/${g.target}${g.unit||''}`};}
+  if(g.kind==='one'){const current=(g.base||0)+(events.some(e=>e.complete===true)?1:0);return {current,target:g.target,pct:g.target?clamp(current/g.target*100):0,text:`${current}/${g.target}${g.unit||''}`};}
+  if(g.kind==='escape'){const es=events.filter(e=>e.counted!==false);const success=(g.baseSuccess||0)+es.filter(e=>e.result==='success').length,total=(g.baseTotal||0)+es.length,rate=total?success/total*100:0;return {current:rate,target:g.target,pct:g.target?clamp(rate/g.target*100):0,text:`${success}/${total} · ${rate.toFixed(1)}%`};}
+  if(g.kind==='habit'){const h=habitCounts(g.habit,cutoff);return {current:h.rate,target:g.target,pct:g.target?clamp(h.rate/g.target*100):0,text:`${h.success}/${h.total} · ${h.rate.toFixed(0)}%`};}
+  if(g.kind==='lower'){const vals=events.filter(e=>e.value!==null&&e.value!==undefined&&e.value!==''&&Number.isFinite(+e.value)).map(e=>+e.value);if(g.baseBest!==null&&g.baseBest!==undefined&&Number.isFinite(+g.baseBest))vals.push(+g.baseBest);if(!vals.length)return {current:null,target:g.target,pct:0,text:'未記録'};const best=Math.min(...vals);return {current:best,target:g.target,pct:clamp(g.target/best*100),text:`BEST ${best}${g.unit||''}`};}
+  if(g.kind==='range'){const latest=events.slice().sort((a,b)=>(b.date+(b.createdAt||'')).localeCompare(a.date+(a.createdAt||'')))[0];const raw=latest?.value!==null&&latest?.value!==undefined&&latest?.value!==''&&Number.isFinite(+latest.value)?+latest.value:(g.baseValue!==null&&g.baseValue!==undefined&&Number.isFinite(+g.baseValue)?+g.baseValue:null);if(raw===null)return {current:null,pct:0,text:'未記録'};const pct=raw>=g.min&&raw<=g.max?100:clamp(100-Math.min(Math.abs(raw-g.min),Math.abs(raw-g.max))*20);return {current:raw,pct,text:`${raw.toFixed(1)}${g.unit||''}`};}
+  if(g.kind==='checklist'){const c=challengeSummaryAt(g.id,'main',cutoff),target=+g.checkTarget||Math.max(1,c.total);return {current:c.done,target,pct:clamp(c.done/target*100),text:g.checkLabel?`${g.checkLabel} ${c.done}/${target}`:`${c.done}/${target}項目`};}
+  if(g.kind==='status'){const latest=events.slice().sort((a,b)=>(b.date+(b.createdAt||'')).localeCompare(a.date+(a.createdAt||'')))[0],status=latest?.status||g.baseStatus||'good',labels={good:'健康継続中',attention:'要注意',recovered:'回復'};return {current:status,pct:status==='attention'?50:100,text:latest?.title||labels[status]||g.baseStatusText||'継続中'};}
+  if(g.kind==='manual'){const latest=events.filter(e=>e.progress!==null&&e.progress!==undefined&&Number.isFinite(+e.progress)).sort((a,b)=>(b.date+(b.createdAt||'')).localeCompare(a.date+(a.createdAt||'')))[0],pct=latest?+latest.progress:+(g.baseProgress??0);return {current:pct,pct:clamp(pct),text:`進捗 ${pct}%`};}
+  return {current:null,pct:0,text:'未記録'};
+}
+function metricForOutput(g,mi){
+  const snap=snapshotForOutput(mi);if(snap?.metrics?.[g.id])return snap.metrics[g.id];
+  if(mi<baselineMonthIndex())return {current:null,pct:0,text:'当時の保存データなし',unavailable:true};
+  return goalMetricAt(g,monthCutoffIso(mi));
+}
+function bonusForOutput(g,mi){
+  const snap=snapshotForOutput(mi);if(snap?.bonus?.[g.id])return snap.bonus[g.id];
+  if(mi<baselineMonthIndex())return {done:0,total:0,items:[]};
+  return challengeSummaryAt(g.id,'bonus',monthCutoffIso(mi));
+}
+function outputAchievedCount(mi){return GOALS.filter(g=>!metricForOutput(g,mi).unavailable&&goalAchieved(g,metricForOutput(g,mi),mi)).length;}
 async function captureSnapshot(mi){
-  const key=snapshotKey(mi),metrics={},bonus={};
-  GOALS.forEach(g=>{metrics[g.id]=clone(goalMetric(g));const b=challengeSummary(g.id,'bonus');bonus[g.id]={done:b.done,total:b.total,items:b.items.map(x=>({label:x.label,done:!!x.done}))};});
-  state.snapshots=state.snapshots||{};state.snapshots[key]={capturedAt:new Date().toISOString(),metrics,bonus,memo:state.monthMemos[mi]||''};
-  await saveState(`${mi+1}月の状態を保存しました`);renderMonthly();
+  const key=snapshotKey(mi),cutoff=monthEndIso(mi),today=isoLocal(nowForYear());
+  if(cutoff>today){toast('未来の月末は確定保存できません');return;}
+  const previous=state.snapshots?.[key];let metrics={},bonus={},source='dated-logs';
+  if(mi<baselineMonthIndex()){
+    // The import only retains aggregates for pre-baseline months. Never invent dates.
+    if(!previous?.metrics){toast('この月の過去データがありません。再現できません');return;}
+    metrics=clone(previous.metrics);bonus=clone(previous.bonus||{});source='imported-historical-snapshot';
+  }else{
+    GOALS.forEach(g=>{metrics[g.id]=clone(goalMetricAt(g,cutoff));bonus[g.id]=clone(challengeSummaryAt(g.id,'bonus',cutoff));});
+  }
+  const saved={capturedAt:new Date().toISOString(),cutoffDate:cutoff,cutoffFormat:SNAPSHOT_FORMAT,metrics,bonus,memo:state.monthMemos[mi]||'',source};
+  state.snapshots=state.snapshots||{};state.snapshots[key]=saved;
+  await saveState(`${mi+1}月末のデータを保存しました`);
+  renderMonthly();
 }
 function eventLabel(e){const t=EVENT_TYPES[e.type]||{label:'記録',emoji:'•'};let detail='';if(t.fields==='escape')detail=e.result==='success'?'成功':'失敗';else if(['score','minutes','weight'].includes(t.fields))detail=`${e.value}${t.valueUnit||''}`;else if(t.fields==='health')detail=({good:'健康',attention:'要注意',recovered:'回復'}[e.status]||'健康メモ');else if(e.complete)detail='完了';else if(Number.isFinite(+e.progress))detail=`${e.progress}%`;else detail=e.title||e.name||'';return {emoji:t.emoji||'•',label:t.label||'記録',detail};}
 
@@ -479,10 +540,10 @@ function openGoalSheet(id){
 function openChallengeForm(goalId,category='bonus',editId=null){
   const c=editId?(state.challenges||[]).find(x=>x.id===editId):null;category=c?.category||category||'bonus';const g=goalById(goalId);if(!g)return;
   openSheet(`<div class="sheet-title"><div><h2>${category==='bonus'?'★ BONUS':'✓ CHECKLIST'} ${c?'修正':'追加'}</h2><span class="badge">${String(goalId).padStart(2,'0')}</span></div><button class="sheet-close" data-close>×</button></div><div class="card"><div class="field"><label>項目名</label><input id="challengeLabel" value="${esc(c?.label||'')}" placeholder="例：アベレージ100切り"></div>${g.kind==='checklist'?`<div class="field"><label>種類</label><select id="challengeCategory"><option value="main" ${category==='main'?'selected':''}>メインCHECKLIST</option><option value="bonus" ${category==='bonus'?'selected':''}>BONUS CHALLENGE</option></select></div>`:''}<label class="check-row"><input id="challengeDone" type="checkbox" ${c?.done?'checked':''}><span>達成済みにする</span></label><div class="actions" style="margin-top:12px"><button class="secondary" id="saveChallengeBtn">${c?'更新':'追加'}</button>${c?'<button class="danger" id="deleteChallengeBtn">削除</button>':''}</div></div>`);
-  document.getElementById('saveChallengeBtn').onclick=async()=>{const label=document.getElementById('challengeLabel').value.trim();if(!label){toast('項目名を入力してください');return;}const cat=document.getElementById('challengeCategory')?.value||category;const done=document.getElementById('challengeDone').checked;if(c){c.label=label;c.category=cat;c.done=done;c.updatedAt=new Date().toISOString();if(done&&!c.completedAt)c.completedAt=new Date().toISOString();if(!done)c.completedAt=null;}else{state.challenges.push({id:uuid(),goalId,label,category:cat,done,createdAt:new Date().toISOString(),completedAt:done?new Date().toISOString():null});}await saveState(c?'チェック項目を更新しました':'チェック項目を追加しました');renderAll();openGoalSheet(goalId);};
+  document.getElementById('saveChallengeBtn').onclick=async()=>{const label=document.getElementById('challengeLabel').value.trim();if(!label){toast('項目名を入力してください');return;}const cat=document.getElementById('challengeCategory')?.value||category;const done=document.getElementById('challengeDone').checked;if(c){if(!!c.done!==done){c.history=c.history||[];c.history.push({at:new Date().toISOString(),before:!!c.done,after:done});}c.label=label;c.category=cat;c.done=done;c.updatedAt=new Date().toISOString();if(done&&!c.completedAt)c.completedAt=new Date().toISOString();if(!done)c.completedAt=null;}else{state.challenges.push({id:uuid(),goalId,label,category:cat,done,createdAt:new Date().toISOString(),completedAt:done?new Date().toISOString():null});}await saveState(c?'チェック項目を更新しました':'チェック項目を追加しました');renderAll();openGoalSheet(goalId);};
   if(c)document.getElementById('deleteChallengeBtn').onclick=async()=>{if(confirm('このチェック項目を削除しますか？')){state.challenges=state.challenges.filter(x=>x.id!==c.id);await saveState('削除しました');renderAll();openGoalSheet(goalId);}};
 }
-async function toggleChallenge(id,goalId){const c=(state.challenges||[]).find(x=>x.id===id);if(!c)return;c.done=!c.done;c.updatedAt=new Date().toISOString();c.completedAt=c.done?new Date().toISOString():null;await saveState(c.done?'達成にしました':'未達に戻しました');renderAll();openGoalSheet(goalId);}
+async function toggleChallenge(id,goalId){const c=(state.challenges||[]).find(x=>x.id===id);if(!c)return;c.history=c.history||[];c.history.push({at:new Date().toISOString(),before:!!c.done,after:!c.done});c.done=!c.done;c.updatedAt=new Date().toISOString();c.completedAt=c.done?new Date().toISOString():null;await saveState(c.done?'達成にしました':'未達に戻しました');renderAll();openGoalSheet(goalId);}
 function openAddChooser(date=isoLocal(nowForYear())){const validQuick=recentQuickTypes();const quick=validQuick.map(k=>{const t=EVENT_TYPES[k];return `<button class="action-chip choose-type" data-type="${esc(k)}"><span>${t.emoji||'＋'}</span>${esc(t.label||k)}</button>`;}).join('');const rest=Object.keys(EVENT_TYPES).filter(k=>!validQuick.includes(k)).map(k=>{const t=EVENT_TYPES[k];return `<button class="action-chip choose-type" data-type="${esc(k)}"><span>${t.emoji||'＋'}</span>${esc(t.label||k)}</button>`;}).join('');openSheet(`<div class="sheet-title"><div><h2>＋ 記録を追加</h2><span class="badge">${fmtDate(date,{month:'numeric',day:'numeric'})}</span></div><button class="sheet-close" data-close>×</button></div><div class="section-head"><div><h2>最近・よく使う</h2></div></div><div class="action-grid">${quick||'<div class="small-text">設定なし</div>'}</div><div class="section-head"><div><h2>その他</h2></div></div><div class="action-grid">${rest}</div>`);document.querySelectorAll('.choose-type').forEach(b=>b.onclick=()=>openEventForm(b.dataset.type,date));}
 function openEventForm(type,date=isoLocal(nowForYear()),editId=null){
   const t=EVENT_TYPES[type];if(!t)return;const e=editId?state.events.find(x=>x.id===editId):null;date=e?.date||date;let fields='';const titleVal=esc(e?.title||''),noteVal=esc(e?.note||'');
@@ -504,12 +565,21 @@ function renderMonthly(){
   document.getElementById('monthlyHabits').innerHTML=Object.entries(DAILY).map(([key,x])=>{const a=monthHabitAggregate(key,mi);return `<div class="month-habit"><div class="month-habit-top"><div><b>${x.emoji||'✓'} ${esc(x.label||key)}</b><br><small>${a.source==='legacy'?'既存の月間集計から':a.source==='resume'?'PWA記録開始日から':'日次ログから'}</small></div><strong>${a.total?Math.round(a.rate):0}%</strong></div><div class="bar" style="margin-top:9px"><i style="width:${Math.min(a.rate,100)}%"></i></div><small>${a.success}/${a.total||0}日</small></div>`;}).join('');
   const counts={};state.events.filter(e=>dateFromIso(e.date).getMonth()===mi).forEach(e=>counts[e.type]=(counts[e.type]||0)+1);const keys=state.config.monthlyEventTypes||QUICK_TYPES;const visible=keys.filter(k=>EVENT_TYPES[k]&&(counts[k]||0)>0);document.getElementById('monthlyEvents').innerHTML=visible.length?visible.map(k=>{const t=EVENT_TYPES[k];return `<div class="month-event"><b>${t.emoji||'•'} ${esc(t.label||k)}</b><div class="n">${counts[k]}</div><small>今月追加</small></div>`;}).join(''):'<div class="card empty" style="grid-column:1/-1">この月に追加したイベントはまだありません</div>';
   document.getElementById('monthMemo').value=state.monthMemos[mi]||'';
-  const snap=state.snapshots?.[snapshotKey(mi)],status=document.getElementById('snapshotStatus');if(status)status.innerHTML=snap?`<span class="badge good">保存済み</span> ${new Date(snap.capturedAt).toLocaleDateString('ja-JP')}`:'<span class="badge">LIVE</span> 現在のデータでプレビュー中';
+  const snap=state.snapshots?.[snapshotKey(mi)],status=document.getElementById('snapshotStatus'),cutoff=monthEndIso(mi),today=isoLocal(nowForYear());
+  if(status){
+    if(cutoff>today)status.innerHTML=`<span class="badge">暫定</span> ${mi+1}月は進行中。${esc(monthCutoffIso(mi))}までの記録で表示しています。`;
+    else if(mi>=baselineMonthIndex()&&snap&&!snapshotIsVerified(mi,snap))status.innerHTML=`<span class="badge">要修復</span> 旧版の${mi+1}月保存データは月末以降の実績が混ざった可能性があります。「月末の進捗を確定保存」で正しく上書きしてください。`;
+    else if(snapshotForOutput(mi))status.innerHTML=`<span class="badge good">月末保存済み</span> ${esc(cutoff)}時点（保存日 ${new Date(snap.capturedAt).toLocaleDateString('ja-JP')}）`;
+    else if(mi<baselineMonthIndex())status.innerHTML='<span class="badge">要確認</span> この月の過去スナップショットがありません。';
+    else status.innerHTML=`<span class="badge">未確定</span> ${esc(cutoff)}までの日付付きログから計算中。月末で確定保存できます。`;
+  }
+  const snapshotBtn=document.getElementById('snapshotBtn');if(snapshotBtn){snapshotBtn.disabled=cutoff>today||mi<baselineMonthIndex()&&!snap?.metrics;snapshotBtn.textContent=cutoff>today?'この月はまだ確定できません':` ${mi+1}月末の進捗を確定保存`;}
+
   const preview=document.getElementById('outputTextPreview');if(preview)preview.value=monthlyText(mi);
   renderStory();renderBackupNotices();
 }
 function circled(n){const xs=['','①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩','⑪','⑫','⑬','⑭','⑮','⑯','⑰','⑱','⑲','⑳'];return xs[n]||String(n);}
-function previousOutputMetric(g,mi){if(mi<=0)return null;return state.snapshots?.[snapshotKey(mi-1)]?.metrics?.[g.id]||null;}
+function previousOutputMetric(g,mi){if(mi<=0)return null;const prev=metricForOutput(g,mi-1);return prev?.unavailable?null:prev;}
 function outputDelta(g,mi,m){const p=previousOutputMetric(g,mi);if(!p||!Number.isFinite(+m.current)||!Number.isFinite(+p.current))return '';
   const d=+m.current-+p.current;if(Math.abs(d)<.001)return '';
   if(['count','one','checklist'].includes(g.kind))return ` (${d>0?'+':''}${Number.isInteger(d)?d:d.toFixed(1)})`;
@@ -597,9 +667,9 @@ function bindUi(){
   document.getElementById('navAdd').onclick=()=>openAddChooser(isoLocal(nowForYear()));document.getElementById('todayAddBtn').onclick=()=>openAddChooser(isoLocal(nowForYear()));
   document.getElementById('settingsBtn').onclick=openSettings;document.getElementById('sheetBackdrop').onclick=e=>{if(e.target===document.getElementById('sheetBackdrop'))closeSheet();};
   document.getElementById('prevMonth').onclick=()=>{calCursor=new Date(calCursor.getFullYear(),calCursor.getMonth()-1,1);renderCalendar();};document.getElementById('nextMonth').onclick=()=>{calCursor=new Date(calCursor.getFullYear(),calCursor.getMonth()+1,1);renderCalendar();};document.getElementById('thisMonthBtn').onclick=()=>{const n=nowForYear();calCursor=new Date(YEAR,n.getMonth(),1);selectedDate=isoLocal(n);renderCalendar();};
-  document.getElementById('summaryMonth').onchange=renderMonthly;document.getElementById('prevSummaryMonth').onclick=()=>{const s=document.getElementById('summaryMonth');s.value=Math.max(0,+s.value-1);renderMonthly();};document.getElementById('nextSummaryMonth').onclick=()=>{const s=document.getElementById('summaryMonth');s.value=Math.min(11,+s.value+1);renderMonthly();};
+  document.getElementById('summaryMonth').onchange=renderMonthly;document.getElementById('summaryMonth').oninput=renderMonthly;document.getElementById('prevSummaryMonth').onclick=()=>{const s=document.getElementById('summaryMonth');s.value=Math.max(0,+s.value-1);renderMonthly();};document.getElementById('nextSummaryMonth').onclick=()=>{const s=document.getElementById('summaryMonth');s.value=Math.min(11,+s.value+1);renderMonthly();};
   document.getElementById('saveMemoBtn').onclick=async()=>{const mi=+document.getElementById('summaryMonth').value;state.monthMemos[mi]=document.getElementById('monthMemo').value;await saveState('月次メモを保存しました');renderMonthly();};
-  document.getElementById('snapshotBtn').onclick=async()=>{const mi=+document.getElementById('summaryMonth').value;if(state.snapshots?.[snapshotKey(mi)]&&!confirm(`${mi+1}月の保存済み状態を現在値で更新しますか？`))return;await captureSnapshot(mi);};
+  document.getElementById('snapshotBtn').onclick=async()=>{const mi=+document.getElementById('summaryMonth').value;if(state.snapshots?.[snapshotKey(mi)]&&!confirm(`${mi+1}月末（${monthEndIso(mi)}）時点の記録だけで再計算・上書きしますか？\n10月以降など、選択月より後の実績は含めません。`))return;await captureSnapshot(mi);};
   document.getElementById('copyMonthlyBtn').onclick=async()=>{const text=monthlyText();try{await navigator.clipboard.writeText(text);toast('月次テキストをコピーしました');}catch(e){prompt('コピーしてください',text);}};
   document.getElementById('openTextBtn').onclick=()=>{const text=monthlyText();openSheet(`<div class="sheet-title"><div><h2>出力テキスト全文</h2><span class="badge">コピー可</span></div><button class="sheet-close" data-close>×</button></div><textarea class="output-preview" style="min-height:62vh" readonly>${esc(text)}</textarea><button class="primary blue" id="copyFullTextBtn">全文をコピー</button>`);document.getElementById('copyFullTextBtn').onclick=async()=>{try{await navigator.clipboard.writeText(text);toast('全文をコピーしました');}catch(e){prompt('コピーしてください',text);}};};
   document.getElementById('markPublishedBtn').onclick=async()=>{const mi=+document.getElementById('summaryMonth').value,t=EVENT_TYPES.publish;if(!t)return;const title=`${mi+1}月まで進捗を公表`;const exists=state.events.some(e=>e.type==='publish'&&e.title===title);if(exists){toast('この月は公表済みです');return;}state.events.push({id:uuid(),type:'publish',goalId:t.goalId,date:isoLocal(nowForYear()),title,createdAt:new Date().toISOString()});await saveState(`${mi+1}月分を公表済みにしました`);renderAll();};
